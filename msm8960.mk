@@ -132,7 +132,7 @@ PRODUCT_COPY_FILES += \
 # Common build properties
 PRODUCT_PROPERTY_OVERRIDES += \
     com.qc.hardware=true \
-    debug.composition.type=dyn \
+    debug.composition.type=gpu \
     debug.egl.hw=1 \
     debug.mdpcomp.maxlayer=0 \
     debug.mdpcomp.logs=0 \
