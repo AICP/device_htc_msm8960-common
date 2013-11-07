@@ -45,6 +45,10 @@ PRODUCT_PACKAGES += \
     libaudio-resampler \
     tinymix
 
+# Filesystem management tools
+PRODUCT_PACKAGES += \
+    e2fsck
+
 # Graphics
 PRODUCT_PACKAGES += \
     copybit.msm8960 \
