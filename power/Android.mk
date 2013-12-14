@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ifeq ($(USE_DEVICE_SPECIFIC_POWERHAL),true)
+ifeq ($(TARGET_PROVIDES_POWERHAL),true)
 ifeq ($(BOARD_VENDOR),htc)
 ifeq ($(TARGET_BOARD_PLATFORM),msm8960)
 LOCAL_PATH := $(call my-dir)
