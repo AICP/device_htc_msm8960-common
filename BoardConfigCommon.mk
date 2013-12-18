@@ -72,10 +72,10 @@ TARGET_USES_ION := true
 BOARD_EGL_CFG := device/htc/msm8960-common/configs/egl.cfg
 
 # Lights
-USE_DEVICE_SPECIFIC_LIBLIGHT := true
+TARGET_PROVIDES_LIBLIGHT := true
 
 # Power
-USE_DEVICE_SPECIFIC_POWERHAL := true
+TARGET_PROVIDES_POWERHAL := true
 
 # Webkit
 ENABLE_WEBGL := true
