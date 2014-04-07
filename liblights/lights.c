@@ -133,12 +133,14 @@ static void set_speaker_light_locked(struct light_device_t *dev,
     case LIGHT_FLASH_TIMED:
       switch (color) {
         case LED_AMBER:
-          write_int(AMBER_BLINK_FILE, 1);
           write_int(GREEN_LED_FILE, 0);
+          write_int(AMBER_LED_FILE, 1);
+          write_int(AMBER_BLINK_FILE, 1);
           break;
         case LED_GREEN:
-          write_int(GREEN_BLINK_FILE, 1);
           write_int(AMBER_LED_FILE, 0);
+          write_int(GREEN_LED_FILE, 1);
+          write_int(GREEN_BLINK_FILE, 1);
           break;
         case LED_BLANK:
           write_int(AMBER_BLINK_FILE, 0);
@@ -313,7 +315,7 @@ static struct hw_module_methods_t lights_module_methods = {
   .open = open_lights,
 };
 
-struct hw_module_t HAL_MODULE_INFO_SYM = 
+struct hw_module_t HAL_MODULE_INFO_SYM =
 {
   .tag = HARDWARE_MODULE_TAG,
   .version_major = 1,
