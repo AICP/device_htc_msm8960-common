@@ -74,6 +74,9 @@ TARGET_PROVIDES_LIBLIGHT := true
 # Power
 TARGET_PROVIDES_POWERHAL := true
 
+# Recovery
+TARGET_RECOVERY_DEVICE_MODULES += chargeled
+
 # SELinux
 BOARD_SEPOLICY_DIRS += \
     device/htc/msm8960-common/sepolicy
