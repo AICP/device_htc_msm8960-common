@@ -74,3 +74,6 @@ TARGET_PROVIDES_LIBLIGHT := true
 
 # Power
 TARGET_POWERHAL_VARIANT := qcom
+
+# SELinux
+include device/qcom/sepolicy/sepolicy.mk
