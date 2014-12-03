@@ -77,3 +77,6 @@ TARGET_POWERHAL_VARIANT := qcom
 
 # SELinux
 include device/qcom/sepolicy/sepolicy.mk
+
+# Recovery
+TARGET_RECOVERY_DEVICE_MODULES += chargeled
