@@ -18,8 +18,8 @@
 #define LOG_TAG "RILC"
 
 #include <hardware_legacy/power.h>
-#include "telephony/ril.h"
-#include "telephony/ril_cdma_sms.h"
+#include <telephony/ril.h>
+#include <telephony/ril_cdma_sms.h>
 #include <cutils/sockets.h>
 #include <cutils/jstring.h>
 #include <telephony/record_stream.h>
@@ -3414,6 +3414,31 @@ static int responseRilSignalStrength(Parcel &p,
             p.writeInt32(p_cur->LTE_SignalStrength.rsrq);
             p.writeInt32(p_cur->LTE_SignalStrength.rssnr);
             p.writeInt32(p_cur->LTE_SignalStrength.cqi);
+
+            startResponse;
+            appendPrintBuf("%s[signalStrength=%d,bitErrorRate=%d,\
+                    CDMA_SS.dbm=%d,CDMA_SSecio=%d,\
+                    EVDO_SS.dbm=%d,EVDO_SS.ecio=%d,\
+                    EVDO_SS.signalNoiseRatio=%d,\
+                    ATT_SS.dbm=%d,ATT_SS.ecno=%d,\
+                    LTE_SS.signalStrength=%d,LTE_SS.rsrp=%d,LTE_SS.rsrq=%d,\
+                    LTE_SS.rssnr=%d,LTE_SS.cqi=%d]",
+                    printBuf,
+                    p_cur->GW_SignalStrength.signalStrength,
+                    p_cur->GW_SignalStrength.bitErrorRate,
+                    p_cur->CDMA_SignalStrength.dbm,
+                    p_cur->CDMA_SignalStrength.ecio,
+                    p_cur->EVDO_SignalStrength.dbm,
+                    p_cur->EVDO_SignalStrength.ecio,
+                    p_cur->EVDO_SignalStrength.signalNoiseRatio,
+                    p_cur->ATT_SignalStrength.dbm,
+                    p_cur->ATT_SignalStrength.ecno,
+                    p_cur->LTE_SignalStrength.signalStrength,
+                    p_cur->LTE_SignalStrength.rsrp,
+                    p_cur->LTE_SignalStrength.rsrq,
+                    p_cur->LTE_SignalStrength.rssnr,
+                    p_cur->LTE_SignalStrength.cqi);
+            closeResponse;
         } else if (responselen >= sizeof (RIL_SignalStrength_v5)) {
             p_cur = ((RIL_SignalStrength_v10 *) response);
 
