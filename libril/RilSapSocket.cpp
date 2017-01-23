@@ -21,6 +21,7 @@
 #include "RilSapSocket.h"
 #include "pb_decode.h"
 #include "pb_encode.h"
+#undef LOG_TAG
 #define LOG_TAG "RIL_UIM_SOCKET"
 #include <utils/Log.h>
 #include <arpa/inet.h>
@@ -85,7 +86,9 @@ void RilSapSocket::sOnUnsolicitedResponse(int unsolResponse,
        const void *data,
        size_t datalen) {
     RilSapSocket *sap_socket = getSocketById(RIL_SOCKET_1);
-    sap_socket->onUnsolicitedResponse(unsolResponse, (void *)data, datalen);
+    if (sap_socket) {
+        sap_socket->onUnsolicitedResponse(unsolResponse, (void *)data, datalen);
+    }
 }
 #endif
 
@@ -248,7 +251,7 @@ void log_hex(const char *who, const uint8_t *buffer, int length) {
     int per_line = 0;
 
     do {
-        dest += sprintf(out, "%8.8s [%8.8x] ", who, source);
+        dest += snprintf(out, sizeof(out), "%8.8s [%8.8x] ", who, source);
         for(; source < length && dest_len - dest > 3 && per_line < BYTES_PER_LINE; source++,
         per_line ++) {
             out[dest++] = HEX_HIGH(buffer[source]);
@@ -299,6 +302,7 @@ void RilSapSocket::onRequestComplete(RIL_Token t, RIL_Errno e, void *response,
         size_t response_len) {
     SapSocketRequest* request= (SapSocketRequest*)t;
     MsgHeader *hdr = request->curr;
+
     MsgHeader rsp;
     rsp.token = request->curr->token;
     rsp.type = MsgType_RESPONSE;
@@ -314,7 +318,9 @@ void RilSapSocket::onRequestComplete(RIL_Token t, RIL_Errno e, void *response,
         } else {
             rsp.payload->size = 0;
         }
+
         RLOGE("Token:%d, MessageId:%d", hdr->token, hdr->id);
+
         sendResponse(&rsp);
         free(rsp.payload);
     }
@@ -353,8 +359,8 @@ void RilSapSocket::sendResponse(MsgHeader* hdr) {
         success = pb_encode(&ostream, MsgHeader_fields, hdr);
 
         if (success) {
-            RLOGD("Size: %d (0x%x) Size as written: 0x%x", encoded_size, encoded_size,
-        written_size);
+            RLOGD("Size: %zu (0x%zx) Size as written: 0x%x", encoded_size,
+                    encoded_size, written_size);
             log_hex("onRequestComplete", &buffer[sizeof(written_size)], encoded_size);
             RLOGI("[%d] < SAP RESPONSE type: %d. id: %d. error: %d",
         hdr->token, hdr->type, hdr->id,hdr->error );
@@ -365,13 +371,13 @@ void RilSapSocket::sendResponse(MsgHeader* hdr) {
                 RLOGD("Write successful");
             }
         } else {
-            RLOGE("Error while encoding response of type %d id %d buffer_size: %d: %s.",
-            hdr->type, hdr->id, buffer_size, PB_GET_ERROR(&ostream));
+            RLOGE("Error while encoding response of type %d id %d buffer_size: %zu: %s.",
+                    hdr->type, hdr->id, buffer_size, PB_GET_ERROR(&ostream));
         }
         free(buffer);
     } else {
-    RLOGE("Not sending response type %d: encoded_size: %u. commandFd: %d. encoded size result: %d",
-        hdr->type, encoded_size, commandFd, success);
+        RLOGE("Not sending response type %d: encoded_size: %zu. commandFd: %d. encoded size result:\
+                %d", hdr->type, encoded_size, commandFd, success);
     }
 
     pthread_mutex_unlock(&write_lock);
