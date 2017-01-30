@@ -5736,8 +5736,6 @@ void RIL_onUnsolicitedResponse(int unsolResponse, const void *data,
             case RIL_UNSOL_TPMR_ID:
                 unsolResponseIndex = htc_base + 9;
                 break;
-            case RIL_UNSOL_RESPONSE_VOICE_NETWORK_STATE_CHANGED:
-                break;
             default:
                 RLOGE("unsupported unsolicited response code %d", unsolResponse);
                 return;
