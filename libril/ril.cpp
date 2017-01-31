@@ -5700,6 +5700,9 @@ void RIL_onUnsolicitedResponse(int unsolResponse, const void *data,
             case RIL_UNSOL_RESPONSE_DATA_NETWORK_STATE_CHANGED_M7:
                 unsolResponse = RIL_UNSOL_RESPONSE_DATA_NETWORK_STATE_CHANGED;
                 break;
+            case RIL_UNSOL_RESPONSE_IMS_NETWORK_STATE_CHANGED_HTC:
+                unsolResponse = RIL_UNSOL_RESPONSE_IMS_NETWORK_STATE_CHANGED;
+                break;
             default:
                 break;
         }
@@ -5724,17 +5727,17 @@ void RIL_onUnsolicitedResponse(int unsolResponse, const void *data,
             case RIL_UNSOL_RESPONSE_VOICE_RADIO_TECH_CHANGED:
                 unsolResponseIndex = htc_base + 5;
                 break;
-            case RIL_UNSOL_RESPONSE_IMS_NETWORK_STATE_CHANGED_HTC:
+            case RIL_UNSOL_RESPONSE_DATA_NETWORK_STATE_CHANGED:
                 unsolResponseIndex = htc_base + 6;
                 break;
-            case RIL_UNSOL_RESPONSE_DATA_NETWORK_STATE_CHANGED:
+            case RIL_UNSOL_SECTOR_ID_IND:
                 unsolResponseIndex = htc_base + 7;
                 break;
-            case RIL_UNSOL_SECTOR_ID_IND:
+            case RIL_UNSOL_TPMR_ID:
                 unsolResponseIndex = htc_base + 8;
                 break;
-            case RIL_UNSOL_TPMR_ID:
-                unsolResponseIndex = htc_base + 9;
+            case RIL_UNSOL_RESPONSE_IMS_NETWORK_STATE_CHANGED:
+                unsolResponseIndex = unsolResponse - RIL_UNSOL_RESPONSE_BASE;
                 break;
             default:
                 RLOGE("unsupported unsolicited response code %d", unsolResponse);
