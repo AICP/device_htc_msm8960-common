@@ -3400,46 +3400,7 @@ static int responseRilSignalStrength(Parcel &p,
 
     RIL_SignalStrength_v10 *p_cur;
     if (s_callbacks.version <= LAST_IMPRECISE_RIL_VERSION) {
-        if (responselen >= sizeof (RIL_SignalStrength_HTC)) {
-            RIL_SignalStrength_HTC *p_cur = ((RIL_SignalStrength_HTC *) response);
-            p.writeInt32(p_cur->GW_SignalStrength.signalStrength);
-            p.writeInt32(p_cur->GW_SignalStrength.bitErrorRate);
-            p.writeInt32(p_cur->CDMA_SignalStrength.dbm);
-            p.writeInt32(p_cur->CDMA_SignalStrength.ecio);
-            p.writeInt32(p_cur->EVDO_SignalStrength.dbm);
-            p.writeInt32(p_cur->EVDO_SignalStrength.ecio);
-            p.writeInt32(p_cur->EVDO_SignalStrength.signalNoiseRatio);
-            p.writeInt32(p_cur->LTE_SignalStrength.signalStrength);
-            p.writeInt32(p_cur->LTE_SignalStrength.rsrp);
-            p.writeInt32(p_cur->LTE_SignalStrength.rsrq);
-            p.writeInt32(p_cur->LTE_SignalStrength.rssnr);
-            p.writeInt32(p_cur->LTE_SignalStrength.cqi);
-
-            startResponse;
-            appendPrintBuf("%s[signalStrength=%d,bitErrorRate=%d,\
-                    CDMA_SS.dbm=%d,CDMA_SSecio=%d,\
-                    EVDO_SS.dbm=%d,EVDO_SS.ecio=%d,\
-                    EVDO_SS.signalNoiseRatio=%d,\
-                    ATT_SS.dbm=%d,ATT_SS.ecno=%d,\
-                    LTE_SS.signalStrength=%d,LTE_SS.rsrp=%d,LTE_SS.rsrq=%d,\
-                    LTE_SS.rssnr=%d,LTE_SS.cqi=%d]",
-                    printBuf,
-                    p_cur->GW_SignalStrength.signalStrength,
-                    p_cur->GW_SignalStrength.bitErrorRate,
-                    p_cur->CDMA_SignalStrength.dbm,
-                    p_cur->CDMA_SignalStrength.ecio,
-                    p_cur->EVDO_SignalStrength.dbm,
-                    p_cur->EVDO_SignalStrength.ecio,
-                    p_cur->EVDO_SignalStrength.signalNoiseRatio,
-                    p_cur->ATT_SignalStrength.dbm,
-                    p_cur->ATT_SignalStrength.ecno,
-                    p_cur->LTE_SignalStrength.signalStrength,
-                    p_cur->LTE_SignalStrength.rsrp,
-                    p_cur->LTE_SignalStrength.rsrq,
-                    p_cur->LTE_SignalStrength.rssnr,
-                    p_cur->LTE_SignalStrength.cqi);
-            closeResponse;
-        } else if (responselen >= sizeof (RIL_SignalStrength_v5)) {
+        if (responselen >= sizeof (RIL_SignalStrength_v5)) {
             p_cur = ((RIL_SignalStrength_v10 *) response);
 
             responseRilSignalStrengthV5(p, p_cur);
@@ -3717,14 +3678,10 @@ static int responseCellInfoListV6(Parcel &p, void *response, size_t responselen)
                 p.writeInt32(INT_MAX); /* skip earfcn */
 
                 // RSRP and RSRQ are being reported as dBm*10, not dBm
-                int rsrp = (p_cur->CellInfo.lte.signalStrengthLte.rsrp != INT_MAX ?
-                            p_cur->CellInfo.lte.signalStrengthLte.rsrp/10 : INT_MAX);
-                int rsrq = (p_cur->CellInfo.lte.signalStrengthLte.rsrq != INT_MAX ?
-                            p_cur->CellInfo.lte.signalStrengthLte.rsrq/10 : INT_MAX);
 
                 p.writeInt32(p_cur->CellInfo.lte.signalStrengthLte.signalStrength);
-                p.writeInt32(rsrp);
-                p.writeInt32(rsrq);
+                p.writeInt32(p_cur->CellInfo.lte.signalStrengthLte.rsrp);
+                p.writeInt32(p_cur->CellInfo.lte.signalStrengthLte.rsrq);
                 p.writeInt32(p_cur->CellInfo.lte.signalStrengthLte.rssnr);
                 p.writeInt32(p_cur->CellInfo.lte.signalStrengthLte.cqi);
                 p.writeInt32(p_cur->CellInfo.lte.signalStrengthLte.timingAdvance);
