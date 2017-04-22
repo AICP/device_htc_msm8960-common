@@ -60,9 +60,9 @@
     {RIL_UNSOL_ON_SS, responseSSData, WAKE_PARTIAL},
     {RIL_UNSOL_STK_CC_ALPHA_NOTIFY, responseString, WAKE_PARTIAL},
     {RIL_UNSOL_LCEDATA_RECV, responseLceData, WAKE_PARTIAL},
+    {RIL_UNSOL_PCO_DATA, responsePcoData, WAKE_PARTIAL},
     {RIL_UNSOL_RESPONSE_ADN_INIT_DONE, responseVoid, WAKE_PARTIAL},
     {RIL_UNSOL_RESPONSE_ADN_RECORDS, responseAdnRecords, WAKE_PARTIAL},
-    {RIL_UNSOL_PCO_DATA, responsePcoData, WAKE_PARTIAL},
     {RIL_UNSOL_ENTER_LPM, responseVoid, WAKE_PARTIAL},                                    // s_unsolResponses[49]: 1523
     {RIL_UNSOL_CDMA_3G_INDICATOR, responseInts, WAKE_PARTIAL},                            // s_unsolResponses[50]: 3009 (s4) / 4259 (m7)
     {RIL_UNSOL_CDMA_ENHANCE_ROAMING_INDICATOR, responseCdmaERIInfo, WAKE_PARTIAL},        // s_unsolResponses[51]: 3012
