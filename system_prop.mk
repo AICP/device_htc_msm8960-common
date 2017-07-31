@@ -10,7 +10,8 @@ PRODUCT_PROPERTY_OVERRIDES += \
     debug.egl.hw=1 \
     debug.mdpcomp.logs=0 \
     debug.sf.hw=1 \
-    persist.hwc.mdpcomp.enable=true
+    persist.hwc.mdpcomp.enable=true \
+    debug.hwui.use_buffer_age=false
 
 # Thermal
 PRODUCT_PROPERTY_OVERRIDES += \
