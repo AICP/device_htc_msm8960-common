@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2012 The CyanogenMod Project
+ * Copyright (C) 2012-2015 The CyanogenMod Project
+ *               2017 The LineageOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +20,7 @@
 #include <cutils/log.h>
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
@@ -297,6 +299,9 @@ static int open_lights(const struct hw_module_t* module, char const* name,
   pthread_once(&g_init, init_globals);
   dev = malloc(sizeof(struct light_device_t));
   memset(dev, 0, sizeof(struct light_device_t));
+
+  if (!dev)
+    return -ENOMEM;
 
   dev->common.tag = HARDWARE_DEVICE_TAG;
   dev->common.version = 0;

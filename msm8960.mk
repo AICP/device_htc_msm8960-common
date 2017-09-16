@@ -42,6 +42,19 @@ PRODUCT_PACKAGES += \
     libaudio-resampler \
     tinymix
 
+# Audio HIDL interfaces
+PRODUCT_PACKAGES += \
+    android.hardware.audio@2.0-impl \
+    android.hardware.audio.effect@2.0-impl
+
+# Bluetooth
+PRODUCT_PACKAGES += \
+    libbt-vendor
+
+# Bluetooth HIDL interfaces
+PRODUCT_PACKAGES += \
+    android.hardware.bluetooth@1.0-impl
+
 # Display
 PRODUCT_PACKAGES += \
     copybit.msm8960 \
@@ -49,6 +62,17 @@ PRODUCT_PACKAGES += \
     hwcomposer.msm8960 \
     libgenlock \
     memtrack.msm8960
+
+# Display HIDL interfaces
+PRODUCT_PACKAGES += \
+    android.hardware.graphics.allocator@2.0-impl \
+    android.hardware.graphics.composer@2.1-impl \
+    android.hardware.graphics.mapper@2.0-impl \
+    android.hardware.memtrack@1.0-impl
+
+# Gatekeeper HIDL interfaces
+PRODUCT_PACKAGES += \
+    android.hardware.gatekeeper@1.0-impl
 
 # IPv6 tethering
 PRODUCT_PACKAGES += \
@@ -59,12 +83,20 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     lights.msm8960
 
+# Lights HIDL interfaces
+PRODUCT_PACKAGES += \
+    android.hardware.light@2.0-impl
+
 # Media
 PRODUCT_COPY_FILES += \
     frameworks/av/media/libstagefright/data/media_codecs_google_audio.xml:system/etc/media_codecs_google_audio.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml:system/etc/media_codecs_google_telephony.xml \
     frameworks/av/media/libstagefright/data/media_codecs_google_video.xml:system/etc/media_codecs_google_video.xml \
     $(LOCAL_PATH)/configs/media_codecs.xml:system/etc/media_codecs.xml
+
+# Memtrack HIDL interfaces
+PRODUCT_PACKAGES += \
+    android.hardware.memtrack@1.0-impl
 
 # OMX
 PRODUCT_PACKAGES += \
@@ -81,11 +113,33 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     power.msm8960
 
+# Power HIDL interfaces
+PRODUCT_PACKAGES += \
+    android.hardware.power@1.0-impl
+
+# Sensors HIDL interfaces
+PRODUCT_PACKAGES += \
+    android.hardware.sensors@1.0-impl \
+    android.hardware.sensors@1.0-service
+
+# Thermal HAL interfaces
+PRODUCT_PACKAGES += \
+    android.hardware.thermal@1.0-impl
+
+# Usb HAL interfaces
+PRODUCT_PACKAGES += \
+    android.hardware.usb@1.0-service
+
 # WiFi
 PRODUCT_PACKAGES += \
     hostapd \
-    hostapd.accept \
-    hostapd.deny \
-    hostapd_default.conf \
+    wificond \
     wpa_supplicant \
     wpa_supplicant.conf
+
+# Vendor Interface Manifest
+DEVICE_MANIFEST_FILE := $(LOCAL_PATH)/manifest.xml
+
+# Vibrator HIDL interfaces
+PRODUCT_PACKAGES += \
+    android.hardware.vibrator@1.0-impl
