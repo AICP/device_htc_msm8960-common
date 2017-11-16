@@ -24,6 +24,8 @@
 # variant, so that it gets overwritten by the parent (which goes
 # against the traditional rules of inheritance).
 
+PLATFORM_PATH := device/htc/msm8960-common
+
 BOARD_VENDOR := htc
 
 # Bootloader
@@ -64,6 +66,9 @@ ifeq ($(HOST_OS),linux)
     endif
   endif
 endif
+
+# Filesystem
+TARGET_FS_CONFIG_GEN := $(PLATFORM_PATH)/config.fs
 
 # Graphics
 NUM_FRAMEBUFFER_SURFACE_BUFFERS := 3
