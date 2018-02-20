@@ -71,7 +71,7 @@ endif
 TARGET_KEYMASTER_SKIP_WAITING_FOR_QSEE := true
 
 # Extended filesystem support
-TARGET_KERNEL_HAVE_EXFAT := true
+TARGET_EXFAT_DRIVER := exfat
 
 # Filesystem
 TARGET_FS_CONFIG_GEN := $(PLATFORM_PATH)/config.fs
