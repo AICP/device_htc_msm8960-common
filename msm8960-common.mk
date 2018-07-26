@@ -45,7 +45,7 @@ PRODUCT_COPY_FILES += \
 
 # Audio
 PRODUCT_PACKAGES += \
-    android.hardware.audio@2.0-impl \
+    android.hardware.audio@4.0-impl \
     android.hardware.audio.effect@2.0-impl \
     audio.a2dp.default \
     audio.primary.msm8960 \
