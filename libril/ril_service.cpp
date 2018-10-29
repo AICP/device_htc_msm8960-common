@@ -16,7 +16,11 @@
 
 #define LOG_TAG "RILC"
 
-#include <android/hardware/radio/1.0/IRadio.h>
+#include <android/hardware/radio/1.1/IRadio.h>
+#include <android/hardware/radio/1.1/IRadioResponse.h>
+#include <android/hardware/radio/1.1/IRadioIndication.h>
+#include <android/hardware/radio/1.1/types.h>
+
 #include <android/hardware/radio/deprecated/1.0/IOemHook.h>
 
 #include <hwbinder/IPCThreadState.h>
@@ -28,9 +32,7 @@
 
 #define INVALID_HEX_CHAR 16
 
-// Enable verbose logging
-#define VDBG 0
-
+using namespace android::hardware::radio;
 using namespace android::hardware::radio::V1_0;
 using namespace android::hardware::radio::deprecated::V1_0;
 using ::android::hardware::configureRpcThreadpool;
@@ -100,6 +102,9 @@ void convertRilLceDataInfoToHal(void *response, size_t responseLen, LceDataInfo&
 void convertRilSignalStrengthToHal(void *response, size_t responseLen,
         SignalStrength& signalStrength);
 
+void convertRilDataCallToHal(RIL_Data_Call_Response_v4 *dcResponse,
+        SetupDataCallResult& dcResult);
+
 void convertRilDataCallToHal(RIL_Data_Call_Response_v6 *dcResponse,
         SetupDataCallResult& dcResult);
 
@@ -114,10 +119,12 @@ void convertRilDataCallListToHal(void *response, size_t responseLen,
 
 void convertRilCellInfoListToHal(void *response, size_t responseLen, hidl_vec<CellInfo>& records);
 
-struct RadioImpl : public IRadio {
+struct RadioImpl : public V1_1::IRadio {
     int32_t mSlotId;
     sp<IRadioResponse> mRadioResponse;
     sp<IRadioIndication> mRadioIndication;
+    sp<V1_1::IRadioResponse> mRadioResponseV1_1;
+    sp<V1_1::IRadioIndication> mRadioIndicationV1_1;
 
     Return<void> setResponseFunctions(
             const ::android::sp<IRadioResponse>& radioResponse,
@@ -247,6 +254,10 @@ struct RadioImpl : public IRadio {
             const ::android::hardware::hidl_string& operatorNumeric);
 
     Return<void> getAvailableNetworks(int32_t serial);
+
+    Return<void> startNetworkScan(int32_t serial, const V1_1::NetworkScanRequest& request);
+
+    Return<void> stopNetworkScan(int32_t serial);
 
     Return<void> startDtmf(int32_t serial,
             const ::android::hardware::hidl_string& s);
@@ -436,9 +447,18 @@ struct RadioImpl : public IRadio {
 
     Return<void> setIndicationFilter(int32_t serial, int32_t indicationFilter);
 
+    Return<void> startKeepalive(int32_t serial, const V1_1::KeepaliveRequest& keepalive);
+
+    Return<void> stopKeepalive(int32_t serial, int32_t sessionHandle);
+
     Return<void> setSimCardPower(int32_t serial, bool powerUp);
+    Return<void> setSimCardPower_1_1(int32_t serial,
+            const V1_1::CardPowerState state);
 
     Return<void> responseAcknowledgement();
+
+    Return<void> setCarrierInfoForImsiEncryption(int32_t serial,
+            const V1_1::ImsiEncryptionInfo& message);
 
     void checkReturnStatus(Return<void>& ret);
 };
@@ -466,8 +486,8 @@ void memsetAndFreeStrings(int numPointers, ...) {
         char *ptr = va_arg(ap, char *);
         if (ptr) {
 #ifdef MEMSET_FREED
-            // TODO: Should pass in the maximum length of the string
-            memsetString(ptr);
+#define MAX_STRING_LENGTH 4096
+            memset(ptr, 0, strnlen(ptr, MAX_STRING_LENGTH));
 #endif
             free(ptr);
         }
@@ -485,9 +505,9 @@ void sendErrorResponse(RequestInfo *pRI, RIL_Errno err) {
  * request with error RIL_E_NO_MEMORY.
  * Returns true on success, and false on failure.
  */
-bool copyHidlStringToRil(char **dest, const hidl_string &src, RequestInfo *pRI) {
+bool copyHidlStringToRil(char **dest, const hidl_string &src, RequestInfo *pRI, bool allowEmpty) {
     size_t len = src.size();
-    if (len == 0) {
+    if (len == 0 && !allowEmpty) {
         *dest = NULL;
         return true;
     }
@@ -499,6 +519,10 @@ bool copyHidlStringToRil(char **dest, const hidl_string &src, RequestInfo *pRI) 
     }
     strncpy(*dest, src.c_str(), len + 1);
     return true;
+}
+
+bool copyHidlStringToRil(char **dest, const hidl_string &src, RequestInfo *pRI) {
+    return copyHidlStringToRil(dest, src, pRI, false);
 }
 
 hidl_string convertCharPtrToHidlString(const char *ptr) {
@@ -536,7 +560,7 @@ bool dispatchString(int serial, int slotId, int request, const char * str) {
     return true;
 }
 
-bool dispatchStrings(int serial, int slotId, int request, int countStrings, ...) {
+bool dispatchStrings(int serial, int slotId, int request, bool allowEmpty, int countStrings, ...) {
     RequestInfo *pRI = android::addRequestToList(serial, slotId, request);
     if (pRI == NULL) {
         return false;
@@ -553,7 +577,7 @@ bool dispatchStrings(int serial, int slotId, int request, int countStrings, ...)
     va_start(ap, countStrings);
     for (int i = 0; i < countStrings; i++) {
         const char* str = va_arg(ap, const char *);
-        if (!copyHidlStringToRil(&pStrings[i], hidl_string(str), pRI)) {
+        if (!copyHidlStringToRil(&pStrings[i], hidl_string(str), pRI, allowEmpty)) {
             va_end(ap);
             for (int j = 0; j < i; j++) {
                 memsetAndFreeStrings(1, pStrings[j]);
@@ -738,6 +762,8 @@ void checkReturnStatus(int32_t slotId, Return<void>& ret, bool isRadioService) {
             if (isRadioService) {
                 radioService[slotId]->mRadioResponse = NULL;
                 radioService[slotId]->mRadioIndication = NULL;
+                radioService[slotId]->mRadioResponseV1_1 = NULL;
+                radioService[slotId]->mRadioIndicationV1_1 = NULL;
             } else {
                 oemHookService[slotId]->mOemHookResponse = NULL;
                 oemHookService[slotId]->mOemHookIndication = NULL;
@@ -773,6 +799,13 @@ Return<void> RadioImpl::setResponseFunctions(
 
     mRadioResponse = radioResponseParam;
     mRadioIndication = radioIndicationParam;
+    mRadioResponseV1_1 = V1_1::IRadioResponse::castFrom(mRadioResponse).withDefault(nullptr);
+    mRadioIndicationV1_1 = V1_1::IRadioIndication::castFrom(mRadioIndication).withDefault(nullptr);
+    if (mRadioResponseV1_1 == nullptr || mRadioIndicationV1_1 == nullptr) {
+        mRadioResponseV1_1 = nullptr;
+        mRadioIndicationV1_1 = nullptr;
+    }
+
     mCounterRadio[mSlotId]++;
 
     ret = pthread_rwlock_unlock(radioServiceRwlockPtr);
@@ -797,7 +830,7 @@ Return<void> RadioImpl::supplyIccPinForApp(int32_t serial, const hidl_string& pi
 #if VDBG
     RLOGD("supplyIccPinForApp: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_ENTER_SIM_PIN,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_ENTER_SIM_PIN, true,
             2, pin.c_str(), aid.c_str());
     return Void();
 }
@@ -807,7 +840,7 @@ Return<void> RadioImpl::supplyIccPukForApp(int32_t serial, const hidl_string& pu
 #if VDBG
     RLOGD("supplyIccPukForApp: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_ENTER_SIM_PUK,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_ENTER_SIM_PUK, true,
             3, puk.c_str(), pin.c_str(), aid.c_str());
     return Void();
 }
@@ -817,7 +850,7 @@ Return<void> RadioImpl::supplyIccPin2ForApp(int32_t serial, const hidl_string& p
 #if VDBG
     RLOGD("supplyIccPin2ForApp: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_ENTER_SIM_PIN2,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_ENTER_SIM_PIN2, true,
             2, pin2.c_str(), aid.c_str());
     return Void();
 }
@@ -827,7 +860,7 @@ Return<void> RadioImpl::supplyIccPuk2ForApp(int32_t serial, const hidl_string& p
 #if VDBG
     RLOGD("supplyIccPuk2ForApp: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_ENTER_SIM_PUK2,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_ENTER_SIM_PUK2, true,
             3, puk2.c_str(), pin2.c_str(), aid.c_str());
     return Void();
 }
@@ -837,7 +870,7 @@ Return<void> RadioImpl::changeIccPinForApp(int32_t serial, const hidl_string& ol
 #if VDBG
     RLOGD("changeIccPinForApp: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_CHANGE_SIM_PIN,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_CHANGE_SIM_PIN, true,
             3, oldPin.c_str(), newPin.c_str(), aid.c_str());
     return Void();
 }
@@ -847,7 +880,7 @@ Return<void> RadioImpl::changeIccPin2ForApp(int32_t serial, const hidl_string& o
 #if VDBG
     RLOGD("changeIccPin2ForApp: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_CHANGE_SIM_PIN2,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_CHANGE_SIM_PIN2, true,
             3, oldPin2.c_str(), newPin2.c_str(), aid.c_str());
     return Void();
 }
@@ -857,7 +890,7 @@ Return<void> RadioImpl::supplyNetworkDepersonalization(int32_t serial,
 #if VDBG
     RLOGD("supplyNetworkDepersonalization: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_ENTER_NETWORK_DEPERSONALIZATION,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_ENTER_NETWORK_DEPERSONALIZATION, true,
             1, netPin.c_str());
     return Void();
 }
@@ -916,7 +949,7 @@ Return<void> RadioImpl::getImsiForApp(int32_t serial, const hidl_string& aid) {
 #if VDBG
     RLOGD("getImsiForApp: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_GET_IMSI,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_GET_IMSI, false,
             1, aid.c_str());
     return Void();
 }
@@ -1027,7 +1060,7 @@ Return<void> RadioImpl::sendSms(int32_t serial, const GsmSmsMessage& message) {
 #if VDBG
     RLOGD("sendSms: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_SEND_SMS,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_SEND_SMS, false,
             2, message.smscPdu.c_str(), message.pdu.c_str());
     return Void();
 }
@@ -1036,7 +1069,7 @@ Return<void> RadioImpl::sendSMSExpectMore(int32_t serial, const GsmSmsMessage& m
 #if VDBG
     RLOGD("sendSMSExpectMore: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_SEND_SMS_EXPECT_MORE,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_SEND_SMS_EXPECT_MORE, false,
             2, message.smscPdu.c_str(), message.pdu.c_str());
     return Void();
 }
@@ -1070,7 +1103,7 @@ Return<void> RadioImpl::setupDataCall(int32_t serial, RadioTechnology radioTechn
     if (s_vendorFunctions->version >= 4 && s_vendorFunctions->version <= 14) {
         const hidl_string &protocol =
                 (isRoaming ? dataProfileInfo.roamingProtocol : dataProfileInfo.protocol);
-        dispatchStrings(serial, mSlotId, RIL_REQUEST_SETUP_DATA_CALL, 7,
+        dispatchStrings(serial, mSlotId, RIL_REQUEST_SETUP_DATA_CALL, true, 7,
             std::to_string((int) radioTechnology + 2).c_str(),
             std::to_string((int) dataProfileInfo.profileId).c_str(),
             dataProfileInfo.apn.c_str(),
@@ -1088,7 +1121,7 @@ Return<void> RadioImpl::setupDataCall(int32_t serial, RadioTechnology radioTechn
             }
             return Void();
         }
-        dispatchStrings(serial, mSlotId, RIL_REQUEST_SETUP_DATA_CALL, 15,
+        dispatchStrings(serial, mSlotId, RIL_REQUEST_SETUP_DATA_CALL, true, 15,
             std::to_string((int) radioTechnology + 2).c_str(),
             std::to_string((int) dataProfileInfo.profileId).c_str(),
             dataProfileInfo.apn.c_str(),
@@ -1247,7 +1280,7 @@ Return<void> RadioImpl::deactivateDataCall(int32_t serial,
 #if VDBG
     RLOGD("deactivateDataCall: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_DEACTIVATE_DATA_CALL,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_DEACTIVATE_DATA_CALL, false,
             2, (std::to_string(cid)).c_str(), reasonRadioShutDown ? "1" : "0");
     return Void();
 }
@@ -1258,7 +1291,7 @@ Return<void> RadioImpl::getFacilityLockForApp(int32_t serial, const hidl_string&
 #if VDBG
     RLOGD("getFacilityLockForApp: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_QUERY_FACILITY_LOCK,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_QUERY_FACILITY_LOCK, true,
             4, facility.c_str(), password.c_str(),
             (std::to_string(serviceClass)).c_str(), appId.c_str());
     return Void();
@@ -1270,7 +1303,7 @@ Return<void> RadioImpl::setFacilityLockForApp(int32_t serial, const hidl_string&
 #if VDBG
     RLOGD("setFacilityLockForApp: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_SET_FACILITY_LOCK,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_SET_FACILITY_LOCK, true,
             5, facility.c_str(), lockState ? "1" : "0", password.c_str(),
             (std::to_string(serviceClass)).c_str(), appId.c_str() );
     return Void();
@@ -1282,7 +1315,7 @@ Return<void> RadioImpl::setBarringPassword(int32_t serial, const hidl_string& fa
 #if VDBG
     RLOGD("setBarringPassword: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_CHANGE_BARRING_PASSWORD,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_CHANGE_BARRING_PASSWORD, true,
             3, facility.c_str(), oldPassword.c_str(), newPassword.c_str());
     return Void();
 }
@@ -1310,22 +1343,6 @@ Return<void> RadioImpl::setNetworkSelectionModeManual(int32_t serial,
 #endif
     dispatchString(serial, mSlotId, RIL_REQUEST_SET_NETWORK_SELECTION_MANUAL,
             operatorNumeric.c_str());
-
-    /**
-      * Qualcomm's RIL doesn't seem to issue any callbacks for opcode 47
-      * This may be a bug on how we call rild or simply some proprietary 'feature'
-      * ..and we don't care: We simply send a SUCCESS message back to the caller to
-      * indicate that we received the command & unblock the UI.
-      * The user will still see if the registration was OK by using the
-      * normal signal meter
-      */
-    RLOGE("setNetworkSelectionModeManual: sending fake success event");
-    RequestInfo *pRI = android::addRequestToList(serial, mSlotId,
-            RIL_REQUEST_SET_NETWORK_SELECTION_MANUAL);
-    if (pRI != NULL) {
-        RIL_onRequestComplete(pRI, RIL_E_SUCCESS, NULL, 0);
-    }
-
     return Void();
 }
 
@@ -1334,6 +1351,80 @@ Return<void> RadioImpl::getAvailableNetworks(int32_t serial) {
     RLOGD("getAvailableNetworks: serial %d", serial);
 #endif
     dispatchVoid(serial, mSlotId, RIL_REQUEST_QUERY_AVAILABLE_NETWORKS);
+    return Void();
+}
+
+Return<void> RadioImpl::startNetworkScan(int32_t serial, const V1_1::NetworkScanRequest& request) {
+#if VDBG
+    RLOGD("startNetworkScan: serial %d", serial);
+#endif
+
+    RequestInfo *pRI = android::addRequestToList(serial, mSlotId, RIL_REQUEST_START_NETWORK_SCAN);
+    if (pRI == NULL) {
+        return Void();
+    }
+
+    if (request.specifiers.size() > MAX_RADIO_ACCESS_NETWORKS) {
+        sendErrorResponse(pRI, RIL_E_INVALID_ARGUMENTS);
+        return Void();
+    }
+
+    RIL_NetworkScanRequest scan_request = {};
+
+    scan_request.type = (RIL_ScanType) request.type;
+    scan_request.interval = request.interval;
+    scan_request.specifiers_length = request.specifiers.size();
+    for (size_t i = 0; i < request.specifiers.size(); ++i) {
+        if (request.specifiers[i].geranBands.size() > MAX_BANDS ||
+            request.specifiers[i].utranBands.size() > MAX_BANDS ||
+            request.specifiers[i].eutranBands.size() > MAX_BANDS ||
+            request.specifiers[i].channels.size() > MAX_CHANNELS) {
+            sendErrorResponse(pRI, RIL_E_INVALID_ARGUMENTS);
+            return Void();
+        }
+        const V1_1::RadioAccessSpecifier& ras_from =
+                request.specifiers[i];
+        RIL_RadioAccessSpecifier& ras_to = scan_request.specifiers[i];
+
+        ras_to.radio_access_network = (RIL_RadioAccessNetworks) ras_from.radioAccessNetwork;
+        ras_to.channels_length = ras_from.channels.size();
+
+        std::copy(ras_from.channels.begin(), ras_from.channels.end(), ras_to.channels);
+        const std::vector<uint32_t> * bands = nullptr;
+        switch (request.specifiers[i].radioAccessNetwork) {
+            case V1_1::RadioAccessNetworks::GERAN:
+                ras_to.bands_length = ras_from.geranBands.size();
+                bands = (std::vector<uint32_t> *) &ras_from.geranBands;
+                break;
+            case V1_1::RadioAccessNetworks::UTRAN:
+                ras_to.bands_length = ras_from.utranBands.size();
+                bands = (std::vector<uint32_t> *) &ras_from.utranBands;
+                break;
+            case V1_1::RadioAccessNetworks::EUTRAN:
+                ras_to.bands_length = ras_from.eutranBands.size();
+                bands = (std::vector<uint32_t> *) &ras_from.eutranBands;
+                break;
+            default:
+                sendErrorResponse(pRI, RIL_E_INVALID_ARGUMENTS);
+                return Void();
+        }
+        // safe to copy to geran_bands because it's a union member
+        for (size_t idx = 0; idx < ras_to.bands_length; ++idx) {
+            ras_to.bands.geran_bands[idx] = (RIL_GeranBands) (*bands)[idx];
+        }
+    }
+
+    CALL_ONREQUEST(RIL_REQUEST_START_NETWORK_SCAN, &scan_request, sizeof(scan_request), pRI,
+            mSlotId);
+
+    return Void();
+}
+
+Return<void> RadioImpl::stopNetworkScan(int32_t serial) {
+#if VDBG
+    RLOGD("stopNetworkScan: serial %d", serial);
+#endif
+    dispatchVoid(serial, mSlotId, RIL_REQUEST_STOP_NETWORK_SCAN);
     return Void();
 }
 
@@ -1423,7 +1514,6 @@ Return<void> RadioImpl::writeSmsToSim(int32_t serial, const SmsWriteArgs& smsWri
     RIL_SMS_WriteArgs args;
     args.status = (int) smsWriteArgs.status;
 
-    int len;
     if (!copyHidlStringToRil(&args.pdu, smsWriteArgs.pdu, pRI)) {
         return Void();
     }
@@ -1603,7 +1693,7 @@ Return<void> RadioImpl::sendBurstDtmf(int32_t serial, const hidl_string& dtmf, i
 #if VDBG
     RLOGD("sendBurstDtmf: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_CDMA_BURST_DTMF,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_CDMA_BURST_DTMF, false,
             3, dtmf.c_str(), (std::to_string(on)).c_str(),
             (std::to_string(off)).c_str());
     return Void();
@@ -1872,7 +1962,7 @@ Return<void> RadioImpl::acknowledgeIncomingGsmSmsWithPdu(int32_t serial, bool su
 #if VDBG
     RLOGD("acknowledgeIncomingGsmSmsWithPdu: serial %d", serial);
 #endif
-    dispatchStrings(serial, mSlotId, RIL_REQUEST_ACKNOWLEDGE_INCOMING_GSM_SMS_WITH_PDU,
+    dispatchStrings(serial, mSlotId, RIL_REQUEST_ACKNOWLEDGE_INCOMING_GSM_SMS_WITH_PDU, false,
             2, success ? "1" : "0", ackPdu.c_str());
     return Void();
 }
@@ -1924,20 +2014,9 @@ Return<void> RadioImpl::setInitialAttachApn(int32_t serial, const DataProfileInf
     if (s_vendorFunctions->version <= 14) {
         RIL_InitialAttachApn iaa = {};
 
-        if (dataProfileInfo.apn.size() == 0) {
-            iaa.apn = (char *) calloc(1, sizeof(char));
-            if (iaa.apn == NULL) {
-                RLOGE("Memory allocation failed for request %s",
-                        requestToString(pRI->pCI->requestNumber));
-                sendErrorResponse(pRI, RIL_E_NO_MEMORY);
-                return Void();
-            }
-            iaa.apn[0] = '\0';
-        } else {
-            if (!copyHidlStringToRil(&iaa.apn, dataProfileInfo.apn, pRI)) {
-                return Void();
-            }
-        }
+        if (!copyHidlStringToRil(&iaa.apn, dataProfileInfo.apn, pRI, true)) {
+            return Void();
+         }
 
         const hidl_string &protocol =
                 (isRoaming ? dataProfileInfo.roamingProtocol : dataProfileInfo.protocol);
@@ -1962,19 +2041,8 @@ Return<void> RadioImpl::setInitialAttachApn(int32_t serial, const DataProfileInf
     } else {
         RIL_InitialAttachApn_v15 iaa = {};
 
-        if (dataProfileInfo.apn.size() == 0) {
-            iaa.apn = (char *) calloc(1, sizeof(char));
-            if (iaa.apn == NULL) {
-                RLOGE("Memory allocation failed for request %s",
-                        requestToString(pRI->pCI->requestNumber));
-                sendErrorResponse(pRI, RIL_E_NO_MEMORY);
-                return Void();
-            }
-            iaa.apn[0] = '\0';
-        } else {
-            if (!copyHidlStringToRil(&iaa.apn, dataProfileInfo.apn, pRI)) {
-                return Void();
-            }
+        if (!copyHidlStringToRil(&iaa.apn, dataProfileInfo.apn, pRI, true)) {
+            return Void();
         }
 
         if (!copyHidlStringToRil(&iaa.protocol, dataProfileInfo.protocol, pRI)) {
@@ -2055,7 +2123,7 @@ bool dispatchImsGsmSms(const ImsSmsMessage& message, RequestInfo *pRI) {
 
     if (!copyHidlStringToRil(&pStrings[0], message.gsmMessage[0].smscPdu, pRI)) {
 #ifdef MEMSET_FREED
-        memset(pStrings, 0, datalen);
+        memset(pStrings, 0, dataLen);
 #endif
         free(pStrings);
         return false;
@@ -2064,7 +2132,7 @@ bool dispatchImsGsmSms(const ImsSmsMessage& message, RequestInfo *pRI) {
     if (!copyHidlStringToRil(&pStrings[1], message.gsmMessage[0].pdu, pRI)) {
         memsetAndFreeStrings(1, pStrings[0]);
 #ifdef MEMSET_FREED
-        memset(pStrings, 0, datalen);
+        memset(pStrings, 0, dataLen);
 #endif
         free(pStrings);
         return false;
@@ -2079,16 +2147,20 @@ bool dispatchImsGsmSms(const ImsSmsMessage& message, RequestInfo *pRI) {
     }
 
 #ifdef MEMSET_FREED
-    memset(pStrings, 0, datalen);
+    memset(pStrings, 0, dataLen);
 #endif
     free(pStrings);
 
     return true;
 }
 
+struct ImsCdmaSms {
+    RIL_IMS_SMS_Message imsSms;
+    RIL_CDMA_SMS_Message cdmaSms;
+};
+
 bool dispatchImsCdmaSms(const ImsSmsMessage& message, RequestInfo *pRI) {
-    RIL_IMS_SMS_Message rism = {};
-    RIL_CDMA_SMS_Message rcsm = {};
+    ImsCdmaSms temp = {};
 
     if (message.cdmaMessage.size() != 1) {
         RLOGE("dispatchImsCdmaSms: Invalid len %s", requestToString(pRI->pCI->requestNumber));
@@ -2096,15 +2168,20 @@ bool dispatchImsCdmaSms(const ImsSmsMessage& message, RequestInfo *pRI) {
         return false;
     }
 
-    rism.tech = RADIO_TECH_3GPP2;
-    rism.retry = BOOL_TO_INT(message.retry);
-    rism.messageRef = message.messageRef;
-    rism.message.cdmaMessage = &rcsm;
+    temp.imsSms.tech = RADIO_TECH_3GPP2;
+    temp.imsSms.retry = BOOL_TO_INT(message.retry);
+    temp.imsSms.messageRef = message.messageRef;
+    temp.imsSms.message.cdmaMessage = &temp.cdmaSms;
 
-    constructCdmaSms(rcsm, message.cdmaMessage[0]);
+    constructCdmaSms(temp.cdmaSms, message.cdmaMessage[0]);
 
-    CALL_ONREQUEST(pRI->pCI->requestNumber, &rism, sizeof(RIL_RadioTechnologyFamily) +
-            sizeof(uint8_t) + sizeof(int32_t) + sizeof(rcsm), pRI, pRI->socket_id);
+    // Vendor code expects payload length to include actual msg payload
+    // (sizeof(RIL_CDMA_SMS_Message)) instead of (RIL_CDMA_SMS_Message *) + size of other fields in
+    // RIL_IMS_SMS_Message
+    int payloadLen = sizeof(RIL_RadioTechnologyFamily) + sizeof(uint8_t) + sizeof(int32_t)
+            + sizeof(RIL_CDMA_SMS_Message);
+
+    CALL_ONREQUEST(pRI->pCI->requestNumber, &temp.imsSms, payloadLen, pRI, pRI->socket_id);
 
     return true;
 }
@@ -2307,7 +2384,6 @@ Return<void> RadioImpl::requestIccSimAuthentication(int32_t serial, int32_t auth
 
     pf.authContext = authContext;
 
-    int len;
     if (!copyHidlStringToRil(&pf.authData, authData, pRI)) {
         return Void();
     }
@@ -2395,20 +2471,21 @@ Return<void> RadioImpl::setDataProfile(int32_t serial, const hidl_vec<DataProfil
         for (size_t i = 0; i < num; i++) {
             dataProfilePtrs[i] = &dataProfiles[i];
 
-            success = copyHidlStringToRil(&dataProfiles[i].apn, profiles[i].apn, pRI);
+            success = copyHidlStringToRil(&dataProfiles[i].apn, profiles[i].apn, pRI, true);
 
             const hidl_string &protocol =
                     (isRoaming ? profiles[i].roamingProtocol : profiles[i].protocol);
 
-            if (success && !copyHidlStringToRil(&dataProfiles[i].protocol, protocol, pRI)) {
+            if (success && !copyHidlStringToRil(&dataProfiles[i].protocol, protocol, pRI, true)) {
                 success = false;
             }
 
-            if (success && !copyHidlStringToRil(&dataProfiles[i].user, profiles[i].user, pRI)) {
+            if (success && !copyHidlStringToRil(&dataProfiles[i].user, profiles[i].user, pRI,
+                    true)) {
                 success = false;
             }
             if (success && !copyHidlStringToRil(&dataProfiles[i].password, profiles[i].password,
-                    pRI)) {
+                    pRI, true)) {
                 success = false;
             }
 
@@ -2458,25 +2535,25 @@ Return<void> RadioImpl::setDataProfile(int32_t serial, const hidl_vec<DataProfil
         for (size_t i = 0; i < num; i++) {
             dataProfilePtrs[i] = &dataProfiles[i];
 
-            success = copyHidlStringToRil(&dataProfiles[i].apn, profiles[i].apn, pRI);
+            success = copyHidlStringToRil(&dataProfiles[i].apn, profiles[i].apn, pRI, true);
             if (success && !copyHidlStringToRil(&dataProfiles[i].protocol, profiles[i].protocol,
                     pRI)) {
                 success = false;
             }
             if (success && !copyHidlStringToRil(&dataProfiles[i].roamingProtocol,
-                    profiles[i].roamingProtocol, pRI)) {
+                    profiles[i].roamingProtocol, pRI, true)) {
                 success = false;
             }
-            if (success && !copyHidlStringToRil(&dataProfiles[i].user, profiles[i].user, pRI)) {
+            if (success && !copyHidlStringToRil(&dataProfiles[i].user, profiles[i].user, pRI,
+                    true)) {
                 success = false;
             }
             if (success && !copyHidlStringToRil(&dataProfiles[i].password, profiles[i].password,
-                    pRI)) {
+                    pRI, true)) {
                 success = false;
             }
-
             if (success && !copyHidlStringToRil(&dataProfiles[i].mvnoMatchData,
-                    profiles[i].mvnoMatchData, pRI)) {
+                    profiles[i].mvnoMatchData, pRI, true)) {
                 success = false;
             }
 
@@ -2553,7 +2630,6 @@ Return<void> RadioImpl::setRadioCapability(int32_t serial, const RadioCapability
     strncpy(rilRc.logicalModemUuid, rc.logicalModemUuid.c_str(), MAX_UUID_LENGTH);
 
     CALL_ONREQUEST(pRI->pCI->requestNumber, &rilRc, sizeof(rilRc), pRI, mSlotId);
-
     return Void();
 }
 
@@ -2706,6 +2782,110 @@ Return<void> RadioImpl::setSimCardPower(int32_t serial, bool powerUp) {
     return Void();
 }
 
+Return<void> RadioImpl::setSimCardPower_1_1(int32_t serial, const V1_1::CardPowerState state) {
+#if VDBG
+    RLOGD("setSimCardPower_1_1: serial %d state %d", serial, state);
+#endif
+    dispatchInts(serial, mSlotId, RIL_REQUEST_SET_SIM_CARD_POWER, 1, state);
+    return Void();
+}
+
+Return<void> RadioImpl::setCarrierInfoForImsiEncryption(int32_t serial,
+        const V1_1::ImsiEncryptionInfo& data) {
+#if VDBG
+    RLOGD("setCarrierInfoForImsiEncryption: serial %d", serial);
+#endif
+    RequestInfo *pRI = android::addRequestToList(
+            serial, mSlotId, RIL_REQUEST_SET_CARRIER_INFO_IMSI_ENCRYPTION);
+    if (pRI == NULL) {
+        return Void();
+    }
+
+    RIL_CarrierInfoForImsiEncryption imsiEncryption = {};
+
+    if (!copyHidlStringToRil(&imsiEncryption.mnc, data.mnc, pRI)) {
+        return Void();
+    }
+    if (!copyHidlStringToRil(&imsiEncryption.mcc, data.mcc, pRI)) {
+        memsetAndFreeStrings(1, imsiEncryption.mnc);
+        return Void();
+    }
+    if (!copyHidlStringToRil(&imsiEncryption.keyIdentifier, data.keyIdentifier, pRI)) {
+        memsetAndFreeStrings(2, imsiEncryption.mnc, imsiEncryption.mcc);
+        return Void();
+    }
+    int32_t lSize = data.carrierKey.size();
+    imsiEncryption.carrierKey = new uint8_t[lSize];
+    memcpy(imsiEncryption.carrierKey, data.carrierKey.data(), lSize);
+    imsiEncryption.expirationTime = data.expirationTime;
+    CALL_ONREQUEST(pRI->pCI->requestNumber, &imsiEncryption,
+            sizeof(RIL_CarrierInfoForImsiEncryption), pRI, mSlotId);
+    delete(imsiEncryption.carrierKey);
+    return Void();
+}
+
+Return<void> RadioImpl::startKeepalive(int32_t serial, const V1_1::KeepaliveRequest& keepalive) {
+#if VDBG
+    RLOGD("%s(): %d", __FUNCTION__, serial);
+#endif
+    RequestInfo *pRI = android::addRequestToList(serial, mSlotId, RIL_REQUEST_START_KEEPALIVE);
+    if (pRI == NULL) {
+        return Void();
+    }
+
+    RIL_KeepaliveRequest kaReq = {};
+
+    kaReq.type = static_cast<RIL_KeepaliveType>(keepalive.type);
+    switch(kaReq.type) {
+        case NATT_IPV4:
+            if (keepalive.sourceAddress.size() != 4 ||
+                    keepalive.destinationAddress.size() != 4) {
+                RLOGE("Invalid address for keepalive!");
+                sendErrorResponse(pRI, RIL_E_INVALID_ARGUMENTS);
+                return Void();
+            }
+            break;
+        case NATT_IPV6:
+            if (keepalive.sourceAddress.size() != 16 ||
+                    keepalive.destinationAddress.size() != 16) {
+                RLOGE("Invalid address for keepalive!");
+                sendErrorResponse(pRI, RIL_E_INVALID_ARGUMENTS);
+                return Void();
+            }
+            break;
+        default:
+            RLOGE("Unknown packet keepalive type!");
+            sendErrorResponse(pRI, RIL_E_INVALID_ARGUMENTS);
+            return Void();
+    }
+
+    ::memcpy(kaReq.sourceAddress, keepalive.sourceAddress.data(), keepalive.sourceAddress.size());
+    kaReq.sourcePort = keepalive.sourcePort;
+
+    ::memcpy(kaReq.destinationAddress,
+            keepalive.destinationAddress.data(), keepalive.destinationAddress.size());
+    kaReq.destinationPort = keepalive.destinationPort;
+
+    kaReq.maxKeepaliveIntervalMillis = keepalive.maxKeepaliveIntervalMillis;
+    kaReq.cid = keepalive.cid; // This is the context ID of the data call
+
+    CALL_ONREQUEST(pRI->pCI->requestNumber, &kaReq, sizeof(RIL_KeepaliveRequest), pRI, mSlotId);
+    return Void();
+}
+
+Return<void> RadioImpl::stopKeepalive(int32_t serial, int32_t sessionHandle) {
+#if VDBG
+    RLOGD("%s(): %d", __FUNCTION__, serial);
+#endif
+    RequestInfo *pRI = android::addRequestToList(serial, mSlotId, RIL_REQUEST_STOP_KEEPALIVE);
+    if (pRI == NULL) {
+        return Void();
+    }
+
+    CALL_ONREQUEST(pRI->pCI->requestNumber, &sessionHandle, sizeof(uint32_t), pRI, mSlotId);
+    return Void();
+}
+
 Return<void> RadioImpl::responseAcknowledgement() {
     android::releaseWakeLock();
     return Void();
@@ -2819,10 +2999,35 @@ int radio::getIccCardStatusResponse(int slotId,
         RadioResponseInfo responseInfo = {};
         populateResponseInfo(responseInfo, serial, responseType, e);
         CardStatus cardStatus = {};
-        if (response == NULL || responseLen != sizeof(RIL_CardStatus_v6)) {
+        if (response == NULL) {
             RLOGE("getIccCardStatusResponse: Invalid response");
             if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
-        } else {
+        } else if (responseLen == sizeof(RIL_CardStatus_v5)) {
+            RIL_CardStatus_v5 *p_cur = ((RIL_CardStatus_v5 *) response);
+            cardStatus.cardState = (CardState) p_cur->card_state;
+            cardStatus.universalPinState = (PinState) p_cur->universal_pin_state;
+            cardStatus.gsmUmtsSubscriptionAppIndex = p_cur->gsm_umts_subscription_app_index;
+            cardStatus.cdmaSubscriptionAppIndex = p_cur->cdma_subscription_app_index;
+            cardStatus.imsSubscriptionAppIndex = -1;
+
+            RIL_AppStatus *rilAppStatus = p_cur->applications;
+            cardStatus.applications.resize(p_cur->num_applications);
+            AppStatus *appStatus = cardStatus.applications.data();
+#if VDBG
+            RLOGD("getIccCardStatusResponse: num_applications %d", p_cur->num_applications);
+#endif
+            for (int i = 0; i < p_cur->num_applications; i++) {
+                appStatus[i].appType = (AppType) rilAppStatus[i].app_type;
+                appStatus[i].appState = (AppState) rilAppStatus[i].app_state;
+                appStatus[i].persoSubstate = (PersoSubstate) rilAppStatus[i].perso_substate;
+                appStatus[i].aidPtr = convertCharPtrToHidlString(rilAppStatus[i].aid_ptr);
+                appStatus[i].appLabelPtr = convertCharPtrToHidlString(
+                        rilAppStatus[i].app_label_ptr);
+                appStatus[i].pin1Replaced = rilAppStatus[i].pin1_replaced;
+                appStatus[i].pin1 = (PinState) rilAppStatus[i].pin1;
+                appStatus[i].pin2 = (PinState) rilAppStatus[i].pin2;
+            }
+        } else if (responseLen == sizeof(RIL_CardStatus_v6)) {
             RIL_CardStatus_v6 *p_cur = ((RIL_CardStatus_v6 *) response);
             cardStatus.cardState = (CardState) p_cur->card_state;
             cardStatus.universalPinState = (PinState) p_cur->universal_pin_state;
@@ -2847,6 +3052,10 @@ int radio::getIccCardStatusResponse(int slotId,
                 appStatus[i].pin1 = (PinState) rilAppStatus[i].pin1;
                 appStatus[i].pin2 = (PinState) rilAppStatus[i].pin2;
             }
+        } else {
+            RLOGE("%s: Invalid response: Unsupported RIL_CardStatus (%d)",
+                __func__, responseLen);
+            if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
         }
 
         Return<void> retStatus = radioService[slotId]->mRadioResponse->
@@ -3044,6 +3253,7 @@ int radio::getCurrentCallsResponse(int slotId,
                 calls[i].namePresentation = (CallPresentation) p_cur->namePresentation;
                 if (p_cur->uusInfo != NULL && p_cur->uusInfo->uusData != NULL) {
                     RIL_UUS_Info *uusInfo = p_cur->uusInfo;
+                    calls[i].uusInfo.resize(1);
                     calls[i].uusInfo[0].uusType = (UusType) uusInfo->uusType;
                     calls[i].uusInfo[0].uusDcs = (UusDcs) uusInfo->uusDcs;
                     // convert uusInfo->uusData to a null-terminated string
@@ -3282,8 +3492,10 @@ int radio::getSignalStrengthResponse(int slotId,
         populateResponseInfo(responseInfo, serial, responseType, e);
         SignalStrength signalStrength = {};
         if (response == NULL || (responseLen != sizeof(RIL_SignalStrength_v10)
-                && responseLen != sizeof(RIL_SignalStrength_v8))) {
-            RLOGE("getSignalStrengthResponse: Invalid response");
+                && responseLen != sizeof(RIL_SignalStrength_v8)
+                && responseLen != sizeof(RIL_SignalStrength_v6)
+                && responseLen != sizeof(RIL_SignalStrength_HTC))) {
+            RLOGE("getSignalStrengthResponse: responseLen = %d", responseLen);
             if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
         } else {
             convertRilSignalStrengthToHal(response, responseLen, signalStrength);
@@ -3498,9 +3710,10 @@ void fillCellIdentityFromVoiceRegStateResponseString(CellIdentity &cellIdentity,
         case RIL_CELL_INFO_TYPE_CDMA:{
             rilCellIdentity.cellIdentityCdma.basestationId =
                     convertResponseStringEntryToInt(response, 4, numStrings);
-            rilCellIdentity.cellIdentityCdma.longitude =
-                    convertResponseStringEntryToInt(response, 5, numStrings);
+            /* Order of Lat. and Long. swapped between RIL and HIDL interface versions. */
             rilCellIdentity.cellIdentityCdma.latitude =
+                    convertResponseStringEntryToInt(response, 5, numStrings);
+            rilCellIdentity.cellIdentityCdma.longitude =
                     convertResponseStringEntryToInt(response, 6, numStrings);
             rilCellIdentity.cellIdentityCdma.systemId =
                     convertResponseStringEntryToInt(response, 8, numStrings);
@@ -3605,21 +3818,28 @@ int radio::getVoiceRegistrationStateResponse(int slotId,
                RLOGE("getVoiceRegistrationStateResponse Invalid response: NULL");
                if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
         } else if (s_vendorFunctions->version <= 14) {
-            if (numStrings != 15) {
-                RLOGE("getVoiceRegistrationStateResponse Invalid response: NULL");
-                if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
-            } else {
                 char **resp = (char **) response;
                 voiceRegResponse.regState = (RegState) ATOI_NULL_HANDLED_DEF(resp[0], 4);
-                voiceRegResponse.rat = ATOI_NULL_HANDLED(resp[3]);
-                voiceRegResponse.cssSupported = ATOI_NULL_HANDLED_DEF(resp[7], 0);
-                voiceRegResponse.roamingIndicator = ATOI_NULL_HANDLED(resp[10]);
-                voiceRegResponse.systemIsInPrl = ATOI_NULL_HANDLED_DEF(resp[11], 0);
-                voiceRegResponse.defaultRoamingIndicator = ATOI_NULL_HANDLED_DEF(resp[12], 0);
-                voiceRegResponse.reasonForDenial = ATOI_NULL_HANDLED_DEF(resp[13], 0);
+                voiceRegResponse.rat = NULL;
+                voiceRegResponse.cssSupported = 0;
+                voiceRegResponse.roamingIndicator = NULL;
+                voiceRegResponse.systemIsInPrl = 0;
+                voiceRegResponse.defaultRoamingIndicator = 0;
+                voiceRegResponse.reasonForDenial = 0;
+                if (numStrings > 3)
+                    voiceRegResponse.rat = ATOI_NULL_HANDLED(resp[3]);
+                if (numStrings > 7)
+                    voiceRegResponse.cssSupported = ATOI_NULL_HANDLED_DEF(resp[7], 0);
+                if (numStrings > 10)
+                    voiceRegResponse.roamingIndicator = ATOI_NULL_HANDLED(resp[10]);
+                if (numStrings > 11)
+                    voiceRegResponse.systemIsInPrl = ATOI_NULL_HANDLED_DEF(resp[11], 0);
+                if (numStrings > 12)
+                    voiceRegResponse.defaultRoamingIndicator = ATOI_NULL_HANDLED_DEF(resp[12], 0);
+                if (numStrings > 13)
+                    voiceRegResponse.reasonForDenial = ATOI_NULL_HANDLED_DEF(resp[13], 0);
                 fillCellIdentityFromVoiceRegStateResponseString(voiceRegResponse.cellIdentity,
                         numStrings, resp);
-            }
         } else {
             RIL_VoiceRegistrationStateResponse *voiceRegState =
                     (RIL_VoiceRegistrationStateResponse *)response;
@@ -3668,18 +3888,18 @@ int radio::getDataRegistrationStateResponse(int slotId,
             if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
         } else if (s_vendorFunctions->version <= 14) {
             int numStrings = responseLen / sizeof(char *);
-            if ((numStrings != 6) && (numStrings != 11)) {
-                RLOGE("getDataRegistrationStateResponse Invalid response: NULL");
-                if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
-            } else {
+                RLOGE("getDataRegistrationStateResponse: numStrings=%d", numStrings);
                 char **resp = (char **) response;
                 dataRegResponse.regState = (RegState) ATOI_NULL_HANDLED_DEF(resp[0], 4);
                 dataRegResponse.rat =  ATOI_NULL_HANDLED_DEF(resp[3], 0);
-                dataRegResponse.reasonDataDenied =  ATOI_NULL_HANDLED(resp[4]);
-                dataRegResponse.maxDataCalls =  ATOI_NULL_HANDLED_DEF(resp[5], 1);
+                dataRegResponse.reasonDataDenied = NULL;
+                dataRegResponse.maxDataCalls = 1;
+                if (numStrings > 4)
+                    dataRegResponse.reasonDataDenied =  ATOI_NULL_HANDLED(resp[4]);
+                if (numStrings > 5)
+                    dataRegResponse.maxDataCalls =  ATOI_NULL_HANDLED_DEF(resp[5], 1);
                 fillCellIdentityFromDataRegStateResponseString(dataRegResponse.cellIdentity,
                         numStrings, resp);
-            }
         } else {
             RIL_DataRegistrationStateResponse *dataRegState =
                     (RIL_DataRegistrationStateResponse *)response;
@@ -3860,7 +4080,8 @@ int radio::setupDataCallResponse(int slotId,
 
         if (response == NULL || (responseLen % sizeof(RIL_Data_Call_Response_v11) != 0
                 && responseLen % sizeof(RIL_Data_Call_Response_v9) != 0
-                && responseLen % sizeof(RIL_Data_Call_Response_v6) != 0)) {
+                && responseLen % sizeof(RIL_Data_Call_Response_v6) != 0
+                && responseLen % sizeof(RIL_Data_Call_Response_v4) != 0)) {
             if (response != NULL) {
                 RLOGE("setupDataCallResponse: Invalid response");
                 if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
@@ -3878,6 +4099,8 @@ int radio::setupDataCallResponse(int slotId,
             convertRilDataCallToHal((RIL_Data_Call_Response_v9 *) response, result);
         } else if ((responseLen % sizeof(RIL_Data_Call_Response_v6)) == 0) {
             convertRilDataCallToHal((RIL_Data_Call_Response_v6 *) response, result);
+        } else if ((responseLen % sizeof(RIL_Data_Call_Response_v4)) == 0) {
+            convertRilDataCallToHal((RIL_Data_Call_Response_v4 *) response, result);
         }
 
         Return<void> retStatus = radioService[slotId]->mRadioResponse->setupDataCallResponse(
@@ -4273,7 +4496,6 @@ int radio::getNetworkSelectionModeResponse(int slotId,
         RadioResponseInfo responseInfo = {};
         populateResponseInfo(responseInfo, serial, responseType, e);
         bool manual = false;
-        int serviceClass;
         if (response == NULL || responseLen != sizeof(int)) {
             RLOGE("getNetworkSelectionModeResponse Invalid response: NULL");
             if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
@@ -4508,7 +4730,6 @@ int radio::getMuteResponse(int slotId,
         RadioResponseInfo responseInfo = {};
         populateResponseInfo(responseInfo, serial, responseType, e);
         bool enable = false;
-        int serviceClass;
         if (response == NULL || responseLen != sizeof(int)) {
             RLOGE("getMuteResponse Invalid response: NULL");
             if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
@@ -4561,7 +4782,8 @@ int radio::getDataCallListResponse(int slotId,
         if ((response == NULL && responseLen != 0)
                 || (responseLen % sizeof(RIL_Data_Call_Response_v11) != 0
                 && responseLen % sizeof(RIL_Data_Call_Response_v9) != 0
-                && responseLen % sizeof(RIL_Data_Call_Response_v6) != 0)) {
+                && responseLen % sizeof(RIL_Data_Call_Response_v6) != 0
+                && responseLen % sizeof(RIL_Data_Call_Response_v4) != 0)) {
             RLOGE("getDataCallListResponse: invalid response");
             if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
         } else {
@@ -6375,6 +6597,23 @@ int radio::sendDeviceStateResponse(int slotId,
     return 0;
 }
 
+int radio::setCarrierInfoForImsiEncryptionResponse(int slotId,
+                               int responseType, int serial, RIL_Errno e,
+                               void *response, size_t responseLen) {
+    RLOGD("setCarrierInfoForImsiEncryptionResponse: serial %d", serial);
+    if (radioService[slotId]->mRadioResponseV1_1 != NULL) {
+        RadioResponseInfo responseInfo = {};
+        populateResponseInfo(responseInfo, serial, responseType, e);
+        Return<void> retStatus = radioService[slotId]->mRadioResponseV1_1->
+                setCarrierInfoForImsiEncryptionResponse(responseInfo);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("setCarrierInfoForImsiEncryptionResponse: radioService[%d]->mRadioResponseV1_1 == "
+                "NULL", slotId);
+    }
+    return 0;
+}
+
 int radio::setIndicationFilterResponse(int slotId,
                               int responseType, int serial, RIL_Errno e,
                               void *response, size_t responselen) {
@@ -6396,7 +6635,6 @@ int radio::setIndicationFilterResponse(int slotId,
     return 0;
 }
 
-
 int radio::setSimCardPowerResponse(int slotId,
                                    int responseType, int serial, RIL_Errno e,
                                    void *response, size_t responseLen) {
@@ -6404,16 +6642,117 @@ int radio::setSimCardPowerResponse(int slotId,
     RLOGD("setSimCardPowerResponse: serial %d", serial);
 #endif
 
-    if (radioService[slotId]->mRadioResponse != NULL) {
+    if (radioService[slotId]->mRadioResponse != NULL
+            || radioService[slotId]->mRadioResponseV1_1 != NULL) {
+        RadioResponseInfo responseInfo = {};
+        populateResponseInfo(responseInfo, serial, responseType, e);
+        if (radioService[slotId]->mRadioResponseV1_1 != NULL) {
+            Return<void> retStatus = radioService[slotId]->mRadioResponseV1_1->
+                    setSimCardPowerResponse_1_1(responseInfo);
+            radioService[slotId]->checkReturnStatus(retStatus);
+        } else {
+            RLOGD("setSimCardPowerResponse: radioService[%d]->mRadioResponseV1_1 == NULL",
+                    slotId);
+            Return<void> retStatus
+                    = radioService[slotId]->mRadioResponse->setSimCardPowerResponse(responseInfo);
+            radioService[slotId]->checkReturnStatus(retStatus);
+        }
+    } else {
+        RLOGE("setSimCardPowerResponse: radioService[%d]->mRadioResponse == NULL && "
+                "radioService[%d]->mRadioResponseV1_1 == NULL", slotId, slotId);
+    }
+    return 0;
+}
+
+int radio::startNetworkScanResponse(int slotId, int responseType, int serial, RIL_Errno e,
+                                    void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("startNetworkScanResponse: serial %d", serial);
+#endif
+
+    if (radioService[slotId]->mRadioResponseV1_1 != NULL) {
         RadioResponseInfo responseInfo = {};
         populateResponseInfo(responseInfo, serial, responseType, e);
         Return<void> retStatus
-                = radioService[slotId]->mRadioResponse->setSimCardPowerResponse(responseInfo);
+                = radioService[slotId]->mRadioResponseV1_1->startNetworkScanResponse(responseInfo);
         radioService[slotId]->checkReturnStatus(retStatus);
     } else {
-        RLOGE("setSimCardPowerResponse: radioService[%d]->mRadioResponse == NULL", slotId);
+        RLOGE("startNetworkScanResponse: radioService[%d]->mRadioResponseV1_1 == NULL", slotId);
     }
 
+    return 0;
+}
+
+int radio::stopNetworkScanResponse(int slotId, int responseType, int serial, RIL_Errno e,
+                                   void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("stopNetworkScanResponse: serial %d", serial);
+#endif
+
+    if (radioService[slotId]->mRadioResponseV1_1 != NULL) {
+        RadioResponseInfo responseInfo = {};
+        populateResponseInfo(responseInfo, serial, responseType, e);
+        Return<void> retStatus
+                = radioService[slotId]->mRadioResponseV1_1->stopNetworkScanResponse(responseInfo);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("stopNetworkScanResponse: radioService[%d]->mRadioResponseV1_1 == NULL", slotId);
+    }
+
+    return 0;
+}
+
+void convertRilKeepaliveStatusToHal(const RIL_KeepaliveStatus *rilStatus,
+        V1_1::KeepaliveStatus& halStatus) {
+    halStatus.sessionHandle = rilStatus->sessionHandle;
+    halStatus.code = static_cast<V1_1::KeepaliveStatusCode>(rilStatus->code);
+}
+
+int radio::startKeepaliveResponse(int slotId, int responseType, int serial, RIL_Errno e,
+                                    void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("%s(): %d", __FUNCTION__, serial);
+#endif
+    RadioResponseInfo responseInfo = {};
+    populateResponseInfo(responseInfo, serial, responseType, e);
+
+    // If we don't have a radio service, there's nothing we can do
+    if (radioService[slotId]->mRadioResponseV1_1 == NULL) {
+        RLOGE("%s: radioService[%d]->mRadioResponseV1_1 == NULL", __FUNCTION__, slotId);
+        return 0;
+    }
+
+    V1_1::KeepaliveStatus ks = {};
+    if (response == NULL || responseLen != sizeof(V1_1::KeepaliveStatus)) {
+        RLOGE("%s: invalid response - %d", __FUNCTION__, static_cast<int>(e));
+        if (e == RIL_E_SUCCESS) responseInfo.error = RadioError::INVALID_RESPONSE;
+    } else {
+        convertRilKeepaliveStatusToHal(static_cast<RIL_KeepaliveStatus*>(response), ks);
+    }
+
+    Return<void> retStatus =
+            radioService[slotId]->mRadioResponseV1_1->startKeepaliveResponse(responseInfo, ks);
+    radioService[slotId]->checkReturnStatus(retStatus);
+    return 0;
+}
+
+int radio::stopKeepaliveResponse(int slotId, int responseType, int serial, RIL_Errno e,
+                                    void *response, size_t responseLen) {
+#if VDBG
+    RLOGD("%s(): %d", __FUNCTION__, serial);
+#endif
+    RadioResponseInfo responseInfo = {};
+    populateResponseInfo(responseInfo, serial, responseType, e);
+
+    // If we don't have a radio service, there's nothing we can do
+    if (radioService[slotId]->mRadioResponseV1_1 == NULL) {
+        RLOGE("%s: radioService[%d]->mRadioResponseV1_1 == NULL", __FUNCTION__, slotId);
+        return 0;
+    }
+
+    Return<void> retStatus =
+            radioService[slotId]->mRadioResponseV1_1->stopKeepaliveResponse(responseInfo);
+    radioService[slotId]->checkReturnStatus(retStatus);
     return 0;
 }
 
@@ -6481,7 +6820,11 @@ int radio::sendRequestStringsResponse(int slotId,
     return 0;
 }
 
-// Radio Indication functions
+/***************************************************************************************************
+ * INDICATION FUNCTIONS
+ * The below function handle unsolicited messages coming from the Radio
+ * (messages for which there is no pending request)
+ **************************************************************************************************/
 
 RadioIndicationType convertIntToRadioIndicationType(int indicationType) {
     return indicationType == RESPONSE_UNSOLICITED ? (RadioIndicationType::UNSOLICITED) :
@@ -6707,9 +7050,9 @@ int radio::nitzTimeReceivedInd(int slotId,
     return 0;
 }
 
-void convertRilSignalStrengthToHalV5(void *response, size_t responseLen,
+void convertRilSignalStrengthToHalHTC(void *response, size_t responseLen,
         SignalStrength& signalStrength) {
-    RIL_SignalStrength_v5 *rilSignalStrength = (RIL_SignalStrength_v5 *) response;
+    RIL_SignalStrength_HTC *rilSignalStrength = (RIL_SignalStrength_HTC *) response;
 
     signalStrength.gw.signalStrength = rilSignalStrength->GW_SignalStrength.signalStrength;
     signalStrength.gw.bitErrorRate = rilSignalStrength->GW_SignalStrength.bitErrorRate;
@@ -6859,8 +7202,8 @@ void convertRilSignalStrengthToHalV10(void *response, size_t responseLen,
 
 void convertRilSignalStrengthToHal(void *response, size_t responseLen,
         SignalStrength& signalStrength) {
-    if (responseLen == sizeof(RIL_SignalStrength_v5)) {
-        convertRilSignalStrengthToHalV5(response, responseLen, signalStrength);
+    if (responseLen == sizeof(RIL_SignalStrength_HTC)) {
+        convertRilSignalStrengthToHalHTC(response, responseLen, signalStrength);
     } else if (responseLen == sizeof(RIL_SignalStrength_v6)) {
         convertRilSignalStrengthToHalV6(response, responseLen, signalStrength);
     } else if (responseLen == sizeof(RIL_SignalStrength_v8)) {
@@ -6875,7 +7218,9 @@ int radio::currentSignalStrengthInd(int slotId,
                                     void *response, size_t responseLen) {
     if (radioService[slotId] != NULL && radioService[slotId]->mRadioIndication != NULL) {
         if (response == NULL || (responseLen != sizeof(RIL_SignalStrength_v10)
-                && responseLen != sizeof(RIL_SignalStrength_v8))) {
+                && responseLen != sizeof(RIL_SignalStrength_v8)
+                && responseLen != sizeof(RIL_SignalStrength_v6)
+                && responseLen != sizeof(RIL_SignalStrength_HTC))) {
             RLOGE("currentSignalStrengthInd: invalid response");
             return 0;
         }
@@ -6895,6 +7240,16 @@ int radio::currentSignalStrengthInd(int slotId,
     }
 
     return 0;
+}
+
+void convertRilDataCallToHal(RIL_Data_Call_Response_v4 *dcResponse,
+        SetupDataCallResult& dcResult) {
+    dcResult.cid = dcResponse->cid;
+    dcResult.active = dcResponse->active;
+    dcResult.type = convertCharPtrToHidlString(dcResponse->type);    
+    dcResult.gateways = convertCharPtrToHidlString(dcResponse->address);
+    dcResult.pcscf = hidl_string();
+    dcResult.mtu = 0;
 }
 
 void convertRilDataCallToHal(RIL_Data_Call_Response_v6 *dcResponse,
@@ -6967,6 +7322,13 @@ void convertRilDataCallListToHal(void *response, size_t responseLen,
         for (int i = 0; i < num; i++) {
             convertRilDataCallToHal(&dcResponse[i], dcResultList[i]);
         }
+    } else if ((responseLen % sizeof(RIL_Data_Call_Response_v4)) == 0) {
+        num = responseLen / sizeof(RIL_Data_Call_Response_v4);
+        RIL_Data_Call_Response_v4 *dcResponse = (RIL_Data_Call_Response_v4 *) response;
+        dcResultList.resize(num);
+        for (int i = 0; i < num; i++) {
+            convertRilDataCallToHal(&dcResponse[i], dcResultList[i]);
+        }
     }
 }
 
@@ -6977,7 +7339,8 @@ int radio::dataCallListChangedInd(int slotId,
         if ((response == NULL && responseLen != 0)
                 || (responseLen % sizeof(RIL_Data_Call_Response_v11) != 0
                 && responseLen % sizeof(RIL_Data_Call_Response_v9) != 0
-                && responseLen % sizeof(RIL_Data_Call_Response_v6) != 0)) {
+                && responseLen % sizeof(RIL_Data_Call_Response_v6) != 0
+                && responseLen % sizeof(RIL_Data_Call_Response_v4) != 0)) {
             RLOGE("dataCallListChangedInd: invalid response");
             return 0;
         }
@@ -7134,7 +7497,7 @@ int radio::simRefreshInd(int slotId, int indicationType,
         SimRefreshResult refreshResult = {};
         RIL_SimRefreshResponse_v7 *simRefreshResponse = ((RIL_SimRefreshResponse_v7 *) response);
         refreshResult.type =
-                (android::hardware::radio::V1_0::SimRefreshType) simRefreshResponse->result;
+                (V1_0::SimRefreshType) simRefreshResponse->result;
         refreshResult.efId = simRefreshResponse->ef_id;
         refreshResult.aid = convertCharPtrToHidlString(simRefreshResponse->aid);
 
@@ -7219,18 +7582,18 @@ int radio::cdmaNewSmsInd(int slotId, int indicationType,
         msg.isServicePresent = rilMsg->bIsServicePresent;
         msg.serviceCategory = rilMsg->uServicecategory;
         msg.address.digitMode =
-                (android::hardware::radio::V1_0::CdmaSmsDigitMode) rilMsg->sAddress.digit_mode;
+                (V1_0::CdmaSmsDigitMode) rilMsg->sAddress.digit_mode;
         msg.address.numberMode =
-                (android::hardware::radio::V1_0::CdmaSmsNumberMode) rilMsg->sAddress.number_mode;
+                (V1_0::CdmaSmsNumberMode) rilMsg->sAddress.number_mode;
         msg.address.numberType =
-                (android::hardware::radio::V1_0::CdmaSmsNumberType) rilMsg->sAddress.number_type;
+                (V1_0::CdmaSmsNumberType) rilMsg->sAddress.number_type;
         msg.address.numberPlan =
-                (android::hardware::radio::V1_0::CdmaSmsNumberPlan) rilMsg->sAddress.number_plan;
+                (V1_0::CdmaSmsNumberPlan) rilMsg->sAddress.number_plan;
 
         int digitLimit = MIN((rilMsg->sAddress.number_of_digits), RIL_CDMA_SMS_ADDRESS_MAX);
         msg.address.digits.setToExternal(rilMsg->sAddress.digits, digitLimit);
 
-        msg.subAddress.subaddressType = (android::hardware::radio::V1_0::CdmaSmsSubaddressType)
+        msg.subAddress.subaddressType = (V1_0::CdmaSmsSubaddressType)
                 rilMsg->sSubAddress.subaddressType;
         msg.subAddress.odd = rilMsg->sSubAddress.odd;
 
@@ -8007,10 +8370,10 @@ int radio::hardwareConfigChangedInd(int slotId,
 void convertRilRadioCapabilityToHal(void *response, size_t responseLen, RadioCapability& rc) {
     RIL_RadioCapability *rilRadioCapability = (RIL_RadioCapability *) response;
     rc.session = rilRadioCapability->session;
-    rc.phase = (android::hardware::radio::V1_0::RadioCapabilityPhase) rilRadioCapability->phase;
+    rc.phase = (V1_0::RadioCapabilityPhase) rilRadioCapability->phase;
     rc.raf = rilRadioCapability->rat;
     rc.logicalModemUuid = convertCharPtrToHidlString(rilRadioCapability->logicalModemUuid);
-    rc.status = (android::hardware::radio::V1_0::RadioCapabilityStatus) rilRadioCapability->status;
+    rc.status = (V1_0::RadioCapabilityStatus) rilRadioCapability->status;
 }
 
 int radio::radioCapabilityIndicationInd(int slotId,
@@ -8237,6 +8600,95 @@ int radio::modemResetInd(int slotId,
     return 0;
 }
 
+int radio::networkScanResultInd(int slotId,
+                                int indicationType, int token, RIL_Errno e, void *response,
+                                size_t responseLen) {
+#if VDBG
+    RLOGD("networkScanResultInd");
+#endif
+    if (radioService[slotId] != NULL && radioService[slotId]->mRadioIndicationV1_1 != NULL) {
+        if (response == NULL || responseLen == 0) {
+            RLOGE("networkScanResultInd: invalid response");
+            return 0;
+        }
+        RLOGD("networkScanResultInd");
+
+#if VDBG
+        RLOGD("networkScanResultInd");
+#endif
+
+        RIL_NetworkScanResult *networkScanResult = (RIL_NetworkScanResult *) response;
+
+        V1_1::NetworkScanResult result;
+        result.status = (V1_1::ScanStatus) networkScanResult->status;
+        result.error = (RadioError) e;
+        convertRilCellInfoListToHal(
+                networkScanResult->network_infos,
+                networkScanResult->network_infos_length * sizeof(RIL_CellInfo_v12),
+                result.networkInfos);
+
+        Return<void> retStatus = radioService[slotId]->mRadioIndicationV1_1->networkScanResult(
+                convertIntToRadioIndicationType(indicationType), result);
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("networkScanResultInd: radioService[%d]->mRadioIndicationV1_1 == NULL", slotId);
+    }
+    return 0;
+}
+
+int radio::carrierInfoForImsiEncryption(int slotId,
+                                  int indicationType, int token, RIL_Errno e, void *response,
+                                  size_t responseLen) {
+    if (radioService[slotId] != NULL && radioService[slotId]->mRadioIndicationV1_1 != NULL) {
+        if (response == NULL || responseLen == 0) {
+            RLOGE("carrierInfoForImsiEncryption: invalid response");
+            return 0;
+        }
+        RLOGD("carrierInfoForImsiEncryption");
+        Return<void> retStatus = radioService[slotId]->mRadioIndicationV1_1->
+                carrierInfoForImsiEncryption(convertIntToRadioIndicationType(indicationType));
+        radioService[slotId]->checkReturnStatus(retStatus);
+    } else {
+        RLOGE("carrierInfoForImsiEncryption: radioService[%d]->mRadioIndicationV1_1 == NULL",
+                slotId);
+    }
+
+    return 0;
+}
+
+int radio::keepaliveStatusInd(int slotId,
+                         int indicationType, int token, RIL_Errno e, void *response,
+                         size_t responseLen) {
+#if VDBG
+    RLOGD("%s(): token=%d", __FUNCTION__, token);
+#endif
+    if (radioService[slotId] == NULL || radioService[slotId]->mRadioIndication == NULL) {
+        RLOGE("%s: radioService[%d]->mRadioIndication == NULL", __FUNCTION__, slotId);
+        return 0;
+    }
+
+    auto ret = V1_1::IRadioIndication::castFrom(
+        radioService[slotId]->mRadioIndication);
+    if (!ret.isOk()) {
+        RLOGE("%s: ret.isOk() == false for radioService[%d]", __FUNCTION__, slotId);
+        return 0;
+    }
+    sp<V1_1::IRadioIndication> radioIndicationV1_1 = ret;
+
+    if (response == NULL || responseLen != sizeof(V1_1::KeepaliveStatus)) {
+        RLOGE("%s: invalid response", __FUNCTION__);
+        return 0;
+    }
+
+    V1_1::KeepaliveStatus ks;
+    convertRilKeepaliveStatusToHal(static_cast<RIL_KeepaliveStatus*>(response), ks);
+
+    Return<void> retStatus = radioIndicationV1_1->keepaliveStatus(
+            convertIntToRadioIndicationType(indicationType), ks);
+    radioService[slotId]->checkReturnStatus(retStatus);
+    return 0;
+}
+
 int radio::oemHookRawInd(int slotId,
                          int indicationType, int token, RIL_Errno e, void *response,
                          size_t responseLen) {
@@ -8291,7 +8743,8 @@ void radio::registerService(RIL_RadioFunctions *callbacks, CommandInfo *commands
         radioService[i]->mSlotId = i;
         oemHookService[i] = new OemHookImpl;
         oemHookService[i]->mSlotId = i;
-        RLOGD("registerService: starting IRadio %s", serviceNames[i]);
+        RLOGD("registerService: starting android::hardware::radio::V1_1::IRadio %s",
+                serviceNames[i]);
         android::status_t status = radioService[i]->registerAsService(serviceNames[i]);
         status = oemHookService[i]->registerAsService(serviceNames[i]);
 

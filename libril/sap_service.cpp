@@ -16,7 +16,7 @@
 
 #define LOG_TAG "RIL_SAP"
 
-#include <android/hardware/radio/1.0/ISap.h>
+#include <android/hardware/radio/1.1/ISap.h>
 
 #include <hwbinder/IPCThreadState.h>
 #include <hwbinder/ProcessState.h>
@@ -42,7 +42,7 @@ sp<SapImpl> sapService[SIM_COUNT];
 sp<SapImpl> sapService[1];
 #endif
 
-struct SapImpl : public ISap {
+struct SapImpl : public android::hardware::radio::V1_1::ISap {
     int32_t slotId;
     sp<ISapCallback> sapCallback;
     RIL_SOCKET_ID rilSocketId;
@@ -106,7 +106,8 @@ MsgHeader* SapImpl::createMsgHeader(MsgId msgId, int32_t token) {
 
 Return<void> SapImpl::addPayloadAndDispatchRequest(MsgHeader *msg, uint16_t reqLen,
         uint8_t *reqPtr) {
-    msg->payload = (pb_bytes_array_t *)malloc(sizeof(pb_bytes_array_t) - 1 + reqLen);
+    pb_bytes_array_t *payload = (pb_bytes_array_t *) malloc(sizeof(pb_bytes_array_t) - 1 + reqLen);
+    msg->payload = payload;
     if (msg->payload == NULL) {
         sendFailedResponse(msg->id, msg->token, 2, reqPtr, msg);
         return Void();
@@ -123,7 +124,7 @@ Return<void> SapImpl::addPayloadAndDispatchRequest(MsgHeader *msg, uint16_t reqL
         sendFailedResponse(msg->id, msg->token, 3, msg->payload, reqPtr, msg);
         return Void();
     }
-    free(msg->payload);
+    free(payload);
     free(reqPtr);
     return Void();
 }
@@ -532,7 +533,6 @@ Return<void> SapImpl::setTransferProtocolReq(int32_t token, SapTransferProtocol 
 
 void *sapDecodeMessage(MsgId msgId, MsgType msgType, uint8_t *payloadPtr, size_t payloadLen) {
     void *responsePtr = NULL;
-    bool decodeStatus = false;
     pb_istream_t stream;
 
     /* Create the stream */
@@ -773,6 +773,13 @@ void processResponse(MsgHeader *rsp, RilSapSocket *sapSocket, MsgType msgType) {
     if (sapImpl->sapCallback == NULL) {
         RLOGE("processResponse: sapCallback == NULL; msgId = %d; msgType = %d",
                 msgId, msgType);
+        return;
+    }
+
+    if (messagePtr == NULL) {
+        RLOGE("processResponse: *messagePtr == NULL; msgId = %d; msgType = %d",
+                msgId, msgType);
+        sapImpl->sendFailedResponse(msgId, rsp->token, 0);
         return;
     }
 

@@ -62,3 +62,15 @@
     {RIL_UNSOL_LCEDATA_RECV, radio::lceDataInd, WAKE_PARTIAL},
     {RIL_UNSOL_PCO_DATA, radio::pcoDataInd, WAKE_PARTIAL},
     {RIL_UNSOL_MODEM_RESTART, radio::modemResetInd, WAKE_PARTIAL},
+    {RIL_UNSOL_CARRIER_INFO_IMSI_ENCRYPTION, radio::carrierInfoForImsiEncryption, WAKE_PARTIAL},
+    {RIL_UNSOL_NETWORK_SCAN_RESULT, radio::networkScanResultInd, WAKE_PARTIAL},
+    {RIL_UNSOL_ENTER_LPM, /* responseVoid */ NULL, WAKE_PARTIAL},                                    // s_unsolResponses[49]: 1523
+    {RIL_UNSOL_CDMA_3G_INDICATOR, /* responseInts */ NULL, WAKE_PARTIAL},                            // s_unsolResponses[50]: 3009 (s4) / 4259 (m7)
+    {RIL_UNSOL_CDMA_ENHANCE_ROAMING_INDICATOR, /* responseCdmaERIInfo */ NULL, WAKE_PARTIAL},        // s_unsolResponses[51]: 3012
+    {RIL_UNSOL_CDMA_NETWORK_BASE_PLUSCODE_DIAL, /* responseString */ NULL, WAKE_PARTIAL},           // s_unsolResponses[52]: 3020
+    {RIL_UNSOL_RESPONSE_PHONE_MODE_CHANGE, /* responseInts */ NULL, WAKE_PARTIAL},                   // s_unsolResponses[53]: 6002 (s4) / 4802 (m7)
+    {RIL_UNSOL_RESPONSE_VOICE_RADIO_TECH_CHANGED, /* responseVoid */ NULL, WAKE_PARTIAL},            // s_unsolResponses[54]: 21004
+    {RIL_UNSOL_RESPONSE_IMS_NETWORK_STATE_CHANGED_HTC, /* responseVoid */ NULL, WAKE_PARTIAL},       // s_unsolResponses[55]: 21005
+    {RIL_UNSOL_RESPONSE_DATA_NETWORK_STATE_CHANGED, /* responseDataCallList */ NULL, WAKE_PARTIAL},  // s_unsolResponses[56]: 21007 (s4) / 5757 (m7)
+    {RIL_UNSOL_SECTOR_ID_IND, /* responseString */ NULL, WAKE_PARTIAL},                              // s_unsolResponses[57]: 3057 (m7)
+    {RIL_UNSOL_TPMR_ID, /* responseInts */ NULL, WAKE_PARTIAL},                                      // s_unsolResponses[58]: 3024 (m7)
