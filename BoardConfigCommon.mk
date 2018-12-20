@@ -67,6 +67,9 @@ ifeq ($(HOST_OS),linux)
   endif
 endif
 
+# Encryption
+TARGET_KEYMASTER_SKIP_WAITING_FOR_QSEE := true
+
 # Filesystem
 TARGET_FS_CONFIG_GEN := $(PLATFORM_PATH)/config.fs
 
