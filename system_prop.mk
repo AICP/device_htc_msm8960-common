@@ -11,6 +11,11 @@ PRODUCT_PROPERTY_OVERRIDES += \
     persist.hwc.mdpcomp.enable=true \
     debug.hwui.use_buffer_age=false
 
+# Memory optimizations
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.vendor.qti.am.reschedule_service=true \
+    ro.vendor.qti.sys.fw.bservice_enable=true
+
 # Thermal
 PRODUCT_PROPERTY_OVERRIDES += \
     persist.thermal.monitor=true
