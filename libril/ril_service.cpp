@@ -7238,7 +7238,7 @@ void convertRilSignalStrengthToHalV10(void *response, size_t responseLen,
 void convertRilSignalStrengthToHal(void *response, size_t responseLen,
         SignalStrength& signalStrength) {
     if (responseLen == sizeof(RIL_SignalStrength_HTC)) {
-        convertRilSignalStrengthToHalHTC(response, responseLen, signalStrength);
+        convertRilSignalStrengthToHalV6(response, responseLen, signalStrength);
     } else if (responseLen == sizeof(RIL_SignalStrength_v6)) {
         convertRilSignalStrengthToHalV6(response, responseLen, signalStrength);
     } else if (responseLen == sizeof(RIL_SignalStrength_v8)) {
