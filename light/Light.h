@@ -30,7 +30,7 @@ namespace V2_0 {
 namespace implementation {
 
 struct Light : public ILight {
-    Light(std::ofstream&& backlight, std::ofstream&& amber_led,
+    Light(std::ofstream&& backlight, std::ofstream&& button_backlight, std::ofstream&& amber_led,
           std::ofstream&& green_led, std::ofstream&& amber_blink,
           std::ofstream&& green_blink);
 
@@ -41,6 +41,7 @@ struct Light : public ILight {
 private:
     void setAttentionLight(const LightState& state);
     void setBacklight(const LightState& state);
+    void setButtonsBacklight(const LightState& state);
     void setBatteryLight(const LightState& state);
     void setNotificationLight(const LightState& state);
     void setSpeakerBatteryLightLocked();
@@ -49,6 +50,7 @@ private:
                                    const LightState& notificationState);
 
     std::ofstream mBacklight;
+    std::ofstream mButtonBacklight;
     std::ofstream mAmberLed;
     std::ofstream mGreenLed;
     std::ofstream mAmberBlink;
@@ -56,6 +58,7 @@ private:
 
     LightState mAttentionState;
     LightState mBatteryState;
+    LightState mButtonState;
     LightState mNotificationState;
 
     std::unordered_map<Type, std::function<void(const LightState&)>> mLights;

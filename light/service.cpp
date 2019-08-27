@@ -30,6 +30,7 @@ using android::hardware::light::V2_0::ILight;
 using android::hardware::light::V2_0::implementation::Light;
 
 const static std::string kBacklightPath = "/sys/class/leds/lcd-backlight/brightness";
+const static std::string kButtonBacklightPath = "/sys/class/leds/button-backlight/brightness";
 const static std::string kAmberLedPath = "/sys/class/leds/amber/brightness";
 const static std::string kGreenLedPath = "/sys/class/leds/green/brightness";
 const static std::string kAmberBlinkPath = "/sys/class/leds/amber/blink";
@@ -40,6 +41,13 @@ int main() {
     if (!backlight) {
         int error = errno;
         ALOGE("Failed to open %s (%d): %s", kBacklightPath.c_str(), error, strerror(error));
+        return -error;
+    }
+
+    std::ofstream buttonBacklight(kButtonBacklightPath);
+    if (!buttonBacklight) {
+        int error = errno;
+        ALOGE("Failed to open %s (%d): %s", kButtonBacklightPath.c_str(), error, strerror(error));
         return -error;
     }
 
@@ -72,6 +80,7 @@ int main() {
     }
 
     android::sp<ILight> service = new Light(std::move(backlight),
+                                            std::move(buttonBacklight),
                                             std::move(amberLed),
                                             std::move(greenLed),
                                             std::move(amberBlink),

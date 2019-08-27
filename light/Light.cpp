@@ -58,10 +58,11 @@ enum {
     BLINK_MODE_LONG = 4,
 };
 
-Light::Light(std::ofstream&& backlight, std::ofstream&& amber_led,
+Light::Light(std::ofstream&& backlight, std::ofstream&& button_backlight, std::ofstream&& amber_led,
              std::ofstream&& green_led, std::ofstream&& amber_blink,
              std::ofstream&& green_blink) :
     mBacklight(std::move(backlight)),
+    mButtonBacklight(std::move(button_backlight)),
     mAmberLed(std::move(amber_led)),
     mGreenLed(std::move(green_led)),
     mAmberBlink(std::move(amber_blink)),
@@ -69,10 +70,12 @@ Light::Light(std::ofstream&& backlight, std::ofstream&& amber_led,
     auto attnFn(std::bind(&Light::setAttentionLight, this, std::placeholders::_1));
     auto backlightFn(std::bind(&Light::setBacklight, this, std::placeholders::_1));
     auto batteryFn(std::bind(&Light::setBatteryLight, this, std::placeholders::_1));
+    auto buttonsFn(std::bind(&Light::setButtonsBacklight, this, std::placeholders::_1));
     auto notifFn(std::bind(&Light::setNotificationLight, this, std::placeholders::_1));
     mLights.emplace(std::make_pair(Type::ATTENTION, attnFn));
     mLights.emplace(std::make_pair(Type::BACKLIGHT, backlightFn));
     mLights.emplace(std::make_pair(Type::BATTERY, batteryFn));
+    mLights.emplace(std::make_pair(Type::BUTTONS, buttonsFn));
     mLights.emplace(std::make_pair(Type::NOTIFICATIONS, notifFn));
 }
 
@@ -115,6 +118,18 @@ void Light::setBacklight(const LightState& state) {
     mBacklight << brightness << std::endl;
 }
 
+void Light::setButtonsBacklight(const LightState& state) {
+    std::lock_guard<std::mutex> lock(mLock);
+
+    uint32_t brightness = rgbToBrightness(state);
+
+    mButtonBacklight << brightness << std::endl;
+
+    mButtonState = state;
+    mButtonState.color = brightness ? 0x00ffffff : 0;
+    setSpeakerBatteryLightLocked();
+}
+
 void Light::setBatteryLight(const LightState& state) {
     std::lock_guard<std::mutex> lock(mLock);
     mBatteryState = state;
@@ -128,7 +143,9 @@ void Light::setNotificationLight(const LightState& state) {
 }
 
 void Light::setSpeakerBatteryLightLocked() {
-    if (isLit(mBatteryState) && isLit(mNotificationState)) {
+    if (isLit(mButtonState)) {
+        setSpeakerLightLocked(mButtonState);
+    } else if (isLit(mBatteryState) && isLit(mNotificationState)) {
         setSpeakerLightLockedDual(mBatteryState, mNotificationState);
     } else if (isLit(mNotificationState)) {
         setSpeakerLightLocked(mNotificationState);
