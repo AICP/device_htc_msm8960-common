@@ -124,10 +124,6 @@ void Light::setButtonsBacklight(const LightState& state) {
     uint32_t brightness = rgbToBrightness(state);
 
     mButtonBacklight << brightness << std::endl;
-
-    mButtonState = state;
-    mButtonState.color = brightness ? 0x00ffffff : 0;
-    setSpeakerBatteryLightLocked();
 }
 
 void Light::setBatteryLight(const LightState& state) {
