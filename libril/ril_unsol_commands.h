@@ -64,6 +64,7 @@
     {RIL_UNSOL_MODEM_RESTART, radio::modemResetInd, WAKE_PARTIAL},
     {RIL_UNSOL_CARRIER_INFO_IMSI_ENCRYPTION, radio::carrierInfoForImsiEncryption, WAKE_PARTIAL},
     {RIL_UNSOL_NETWORK_SCAN_RESULT, radio::networkScanResultInd, WAKE_PARTIAL},
+    {RIL_UNSOL_KEEPALIVE_STATUS, radio::keepaliveStatusInd, WAKE_PARTIAL},
     {RIL_UNSOL_ENTER_LPM, /* responseVoid */ NULL, WAKE_PARTIAL},                                    // s_unsolResponses[49]: 1523
     {RIL_UNSOL_CDMA_3G_INDICATOR, /* responseInts */ NULL, WAKE_PARTIAL},                            // s_unsolResponses[50]: 3009 (s4) / 4259 (m7)
     {RIL_UNSOL_CDMA_ENHANCE_ROAMING_INDICATOR, /* responseCdmaERIInfo */ NULL, WAKE_PARTIAL},        // s_unsolResponses[51]: 3012
