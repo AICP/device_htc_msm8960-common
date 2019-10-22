@@ -60,11 +60,6 @@ PRODUCT_PACKAGES += \
     libgenlock \
     memtrack.msm8960
 
-# IPv6 tethering
-PRODUCT_PACKAGES += \
-    ebtables \
-    ethertypes
-
 # JamesDSPManager
 PRODUCT_PACKAGES += \
     JamesDSPManager
