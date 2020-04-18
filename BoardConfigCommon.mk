@@ -67,8 +67,5 @@ TARGET_PROVIDES_LIBLIGHT := true
 # Power
 TARGET_POWERHAL_VARIANT := qcom
 
-# Radio
-TARGET_RIL_VARIANT := caf
-
 # Recovery
 TARGET_RECOVERY_DEVICE_MODULES += chargeled
