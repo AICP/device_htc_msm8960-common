@@ -65,6 +65,10 @@ PRODUCT_PACKAGES += \
     ebtables \
     ethertypes
 
+# JamesDSPManager
+PRODUCT_PACKAGES += \
+    JamesDSPManager
+
 # Lights
 PRODUCT_PACKAGES += \
     android.hardware.light@2.0-impl \
