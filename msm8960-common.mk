@@ -97,9 +97,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     android.hardware.wifi@1.0-service.legacy \
     hostapd \
-    hostapd.accept \
-    hostapd.deny \
-    hostapd_default.conf \
     wpa_supplicant \
     wpa_supplicant.conf \
     libwpa_client
