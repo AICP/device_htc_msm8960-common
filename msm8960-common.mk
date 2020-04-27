@@ -99,7 +99,8 @@ PRODUCT_PACKAGES += \
     libOmxAmrEnc \
     libOmxEvrcEnc \
     libOmxQcelp13Enc \
-    libstagefrighthw
+    libstagefrighthw \
+    libc2dcolorconvert
 
 # Power
 PRODUCT_PACKAGES += \
