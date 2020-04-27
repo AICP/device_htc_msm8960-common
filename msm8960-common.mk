@@ -67,6 +67,10 @@ PRODUCT_PACKAGES += \
     libgenlock \
     memtrack.msm8960
 
+# DRM
+PRODUCT_PACKAGES += \
+    android.hardware.drm@1.0-impl
+
 # JamesDSPManager
 PRODUCT_PACKAGES += \
     JamesDSPManager
