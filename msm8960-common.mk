@@ -104,7 +104,10 @@ PRODUCT_PACKAGES += \
 
 # Power
 PRODUCT_PACKAGES += \
-    power.msm8960
+    power.msm8960 \
+    android.hardware.power@1.0-impl \
+    android.hardware.power@1.0-service
+
 
 # WiFi
 PRODUCT_PACKAGES += \
