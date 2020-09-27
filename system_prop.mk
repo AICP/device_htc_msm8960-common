@@ -2,6 +2,11 @@
 PRODUCT_PROPERTY_OVERRIDES += \
     camera2.portability.force_api=1
 
+# Disable traced and iorapd
+PRODUCT_PROPERTY_OVERRIDES += \
+	ro.iorapd.enable=false \
+	persist.traced.enable=0
+
 # Display
 PRODUCT_PROPERTY_OVERRIDES += \
     debug.composition.type=dyn \
