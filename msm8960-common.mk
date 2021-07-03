@@ -93,10 +93,6 @@ PRODUCT_PACKAGES += \
     libhwbinder.vendor \
     vndservicemanager
 
-# JamesDSPManager
-PRODUCT_PACKAGES += \
-    JamesDSPManager
-
 # Lights
 PRODUCT_PACKAGES += \
     android.hardware.light@2.0-service.htc_msm8960 \
