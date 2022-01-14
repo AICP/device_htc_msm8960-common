@@ -87,6 +87,24 @@
       "parentUuid": "423f3af2_b6b4ed12",
       "revId": "342926b3c021d805076a7fb047738d03ffe4dffb",
       "serverId": "9f904cbb-a964-4fab-a7dc-5cfc4d5c238b"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "02ef90bc_77e40970",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1587
+      },
+      "writtenOn": "2022-01-14T17:39:30Z",
+      "side": 1,
+      "message": "The latest 3.5.2 build for M7 should have that fix",
+      "parentUuid": "3dd126c4_816f3b3c",
+      "revId": "342926b3c021d805076a7fb047738d03ffe4dffb",
+      "serverId": "9f904cbb-a964-4fab-a7dc-5cfc4d5c238b"
     }
   ]
 }
