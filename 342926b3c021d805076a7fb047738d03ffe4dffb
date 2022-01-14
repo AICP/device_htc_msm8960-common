@@ -33,6 +33,24 @@
       "message": "This is no longer needed\nhttps://gerrit.twrp.me/c/android_bootable_recovery/+/4621",
       "revId": "342926b3c021d805076a7fb047738d03ffe4dffb",
       "serverId": "9f904cbb-a964-4fab-a7dc-5cfc4d5c238b"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "e4cf98d9_d388fd29",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1375
+      },
+      "writtenOn": "2022-01-14T13:59:19Z",
+      "side": 1,
+      "message": "since which version is this?",
+      "parentUuid": "35a29992_8b65edeb",
+      "revId": "342926b3c021d805076a7fb047738d03ffe4dffb",
+      "serverId": "9f904cbb-a964-4fab-a7dc-5cfc4d5c238b"
     }
   ]
 }
