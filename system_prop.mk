@@ -8,8 +8,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
 
 # Disable traced and iorapd
 PRODUCT_PROPERTY_OVERRIDES += \
-	ro.iorapd.enable=false \
-	persist.traced.enable=0
+	ro.iorapd.enable=false
 
 # Display
 PRODUCT_PROPERTY_OVERRIDES += \
